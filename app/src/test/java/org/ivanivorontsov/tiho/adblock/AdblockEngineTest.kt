@@ -77,6 +77,16 @@ class AdblockEngineTest {
         AdblockNative.free(ptr)
     }
 
+    @Test fun fromSerializedKeepsRulesAndResources() {
+        val res = """[{"name":"noopjs","aliases":["noop.js"],"kind":{"mime":"application/javascript"},"content":"KGZ1bmN0aW9uKCl7fSkoKTs="}]"""
+        val bytes = engine().use { it.serialize()!! }
+        AdblockEngine.fromSerialized(bytes, res).use { e ->
+            assertEquals(Decision.Block, e.check("https://ad.doubleclick.net/x.js", "https://news.example/", "script"))
+            assertTrue(e.check("https://cdn.example.net/prebid.js", "https://site.test/", "script") is Decision.Redirect)
+            assertTrue(JSONObject(e.cosmeticJson("https://example.org/")!!).getJSONArray("hide").toString().contains(".ad-banner"))
+        }
+    }
+
     @Test fun realBundledListsBlockCommonTrackers() {
         val dir = File(System.getProperty("tiho.assets") ?: return, "filters")
         val lists = listOf("easylist", "easyprivacy", "ruadlist").map { File(dir, "$it.txt").readText() to true }

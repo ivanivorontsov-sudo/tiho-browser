@@ -103,6 +103,17 @@ const tihoPrivacy = (function () {
         (W.document.head || W.document.documentElement).appendChild(m);
       } catch (e) {}
     }
+    // Brave-style referrer trimming for script: cross-site document.referrer exposes the origin only
+    // (Chromium's default header policy strict-origin-when-cross-origin already trims the Referer header).
+    try {
+      const D = W.Document && W.Document.prototype;
+      getter(D, 'referrer', function (orig) {
+        const r = orig.call(this);
+        if (!r) return r;
+        try { const u = new URL(r); if (site(u.hostname) !== site(W.location.hostname)) return u.origin + '/'; } catch (e) {}
+        return r;
+      });
+    } catch (e) {}
     // Firefox/Tor-style: don't leak window.name across sites.
     try {
       if (W === W.top && W.name) {
@@ -111,12 +122,32 @@ const tihoPrivacy = (function () {
       }
     } catch (e) {}
 
+    // ---------------------------------------------------------------- blocker parity for fetch()/XHR
+    // In Chrome a blocked request fails with ERR_BLOCKED_BY_CLIENT. WebView can only answer with an HTTP response,
+    // which would *resolve* fetch(); so script-initiated requests are checked against adblock-rust first.
+    if (C.adblock && C.bridge) {
+      const B = W[C.bridge];
+      if (B && B.block) {
+        const abs = (u) => { try { return new W.URL(u, W.location.href).href; } catch (e) { return ''; } };
+        const isBlocked = (u) => { const a = abs(u); if (!/^https?:/.test(a)) return false; try { return B.block(C.token, a, 'xmlhttprequest'); } catch (e) { return false; } };
+        method(W, 'fetch', function (orig, a) {
+          const r = a[0];
+          const u = r && typeof r === 'object' && 'url' in r ? r.url : String(r);
+          if (isBlocked(u)) return W.Promise.reject(new W.TypeError('Failed to fetch'));
+          return orig.apply(this, a);
+        });
+        const XP = W.XMLHttpRequest && W.XMLHttpRequest.prototype;
+        // Redirect blocked XHRs to a port Chromium refuses (ERR_UNSAFE_PORT) → genuine network error, status 0.
+        method(XP, 'open', function (orig, a) { if (a.length > 1 && isBlocked(a[1])) { a = Array.from(a); a[1] = 'https://0.0.0.0:1/'; } return orig.apply(this, a); });
+      }
+    }
+
     if (!C.fp) return;
 
     // ---------------------------------------------------------------- hardware / platform uniformity
     getter(N, 'hardwareConcurrency', () => C.cores);
     getter(N, 'deviceMemory', () => C.mem);
-    getter(N, 'platform', () => (C.desktop ? 'Linux x86_64' : 'Linux armv81'));
+    getter(N, 'platform', () => (C.desktop ? 'Linux x86_64' : 'Linux armv8l'));
     getter(N, 'maxTouchPoints', function (orig) { return C.desktop ? 0 : 5; });
     // Brave "prevent fingerprinting via language": expose only the primary language.
     getter(N, 'languages', function (orig) { const l = orig.call(this); return O.freeze(l && l.length ? [l[0]] : []); });
@@ -125,6 +156,8 @@ const tihoPrivacy = (function () {
     remove(N, 'keyboard');
     remove(N, 'gpu');
     remove(W, 'IdleDetector');
+    // Cromite-style: hardware access APIs a web page never needs in a privacy browser.
+    remove(N, 'requestMIDIAccess'); remove(N, 'hid'); remove(N, 'usb'); remove(N, 'serial'); remove(N, 'bluetooth');
     remove(W, 'ComputePressureObserver'); remove(W, 'PressureObserver');
     method(N, 'getGamepads', () => []);
     if (W.NetworkInformation) {
@@ -161,6 +194,17 @@ const tihoPrivacy = (function () {
           return list.filter((d) => (seen.has(d.kind) ? false : (seen.add(d.kind), true)));
         });
       });
+    }
+    // Screen: report the browser window instead of the physical display (Brave/Tor approach), 24-bit colour.
+    if (W.Screen) {
+      const SP = W.Screen.prototype;
+      const ow = () => W.outerWidth || W.innerWidth, oh = () => W.outerHeight || W.innerHeight;
+      getter(SP, 'width', function (orig) { return ow() || orig.call(this); });
+      getter(SP, 'height', function (orig) { return oh() || orig.call(this); });
+      getter(SP, 'availWidth', function (orig) { return ow() || orig.call(this); });
+      getter(SP, 'availHeight', function (orig) { return oh() || orig.call(this); });
+      getter(SP, 'colorDepth', () => 24);
+      getter(SP, 'pixelDepth', () => 24);
     }
     // Speech synthesis voices are a strong OS/locale fingerprint (Cromite disables the API).
     if (W.SpeechSynthesis) method(W.SpeechSynthesis.prototype, 'getVoices', () => []);
@@ -246,8 +290,9 @@ const tihoPrivacy = (function () {
     } else {
       GLs.forEach((P) => {
         method(P, 'getParameter', function (orig, a) {
-          if (a[0] === 0x9245) return 'Google Inc.';          // UNMASKED_VENDOR_WEBGL
-          if (a[0] === 0x9246) return 'ANGLE (Google, Vulkan 1.3.0, OpenGL ES 3.2)'; // UNMASKED_RENDERER_WEBGL
+          // Report one very common GPU instead of the real one (large anonymity set, like a uniform RFP value).
+          if (a[0] === 0x9245) return C.desktop ? 'Google Inc. (Intel)' : 'Qualcomm';               // UNMASKED_VENDOR_WEBGL
+          if (a[0] === 0x9246) return C.desktop ? 'ANGLE (Intel, Mesa Intel(R) UHD Graphics 620 (KBL GT2), OpenGL 4.6)' : 'Adreno (TM) 640'; // UNMASKED_RENDERER_WEBGL
           return orig.apply(this, a);
         });
         method(P, 'readPixels', function (orig, a) {

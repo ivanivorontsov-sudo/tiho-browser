@@ -90,7 +90,7 @@ class Prefs(context: Context) {
     // --- Content
     var adblock by B("adblock", true)
     var blockPopups by B("block_popups", true)
-    var blockAutoRedirects by B("block_auto_redirects", true)
+    var blockAutoRedirects by B("block_auto_redirects", false)
     var allowlist by SS("allowlist", emptySet())
     var enabledLists by SS("lists", DEFAULT_LISTS)
     var customRules by S("custom_rules", "")
@@ -113,7 +113,7 @@ class Prefs(context: Context) {
     companion object {
         val DEFAULT_LISTS = setOf(
             "easylist", "easyprivacy", "ruadlist", "peterlowe", "ublock-filters", "ublock-privacy",
-            "ublock-unbreak", "ublock-quickfixes", "ublock-badware", "adguard-urltracking", "cname-ads",
+            "ublock-unbreak", "ublock-quickfixes", "ublock-badware", "adguard-urltracking", "cname-ads", "hagezi-light",
         )
         val SEARCH_ENGINES = listOf(
             "ddg" to "DuckDuckGo", "brave" to "Brave Search", "startpage" to "Startpage",

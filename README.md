@@ -1,7 +1,7 @@
 # Тихо — лёгкий приватный браузер для Android
 
 Kotlin + Jetpack Compose (Material 3) поверх Android System WebView. Блокировщик рекламы — **Brave adblock-rust** (Rust, JNI через cargo-ndk)
-со списками EasyList, EasyPrivacy, RU AdList, uBlock filters/privacy/unbreak/quick-fixes/badware, Peter Lowe, AdGuard URL Tracking и AdGuard CNAME,
+со списками EasyList, EasyPrivacy, RU AdList, uBlock filters/privacy/unbreak/quick-fixes/badware, Peter Lowe, HaGeZi Multi Light, AdGuard URL Tracking и AdGuard CNAME (CNAME-клоакинг),
 плюс скриптлеты и redirect-ресурсы uBlock Origin. Без аналитики, телеметрии, Google Play Services и аккаунтов.
 
 * Пакет: `org.ivanivorontsov.tiho`, minSdk 26, target 35, ABI arm64-v8a + armeabi-v7a, R8.
@@ -30,6 +30,44 @@ WebView: `MetricsOptOut`, `EnableSafeBrowsing=false`, пустой allowlist д�
 и userscripts Greasemonkey/Tampermonkey (@match/@include/@exclude/@run-at/@require/@noframes, GM_* API), установка по ссылке
 на `.user.js` или из Greasy Fork. Расширения Chrome Web Store не поддерживаются: в WebView нет среды WebExtensions.
 
+## Исследование приватности: что применено
+
+Изучены патчи Cromite/Bromite, Mull и arkenfox user.js, Brave Shields (farbling), Tor Browser (RFP), DuckDuckGo,
+рекомендации privacyguides.org, методики EFF Cover Your Tracks, CreepJS и BrowserLeaks.
+
+| Техника (источник) | В «Тихо» |
+|---|---|
+| Блокировка рекламы/трекеров, косметика, скриптлеты (Brave, uBO) | ✅ adblock-rust + uBO-ресурсы, блок fetch/XHR/подресурсов |
+| CNAME-клоакинг (AdGuard, HaGeZi) | ✅ списком AdGuard CNAME + HaGeZi (DNS-уровень в WebView недоступен) |
+| Удаление трекинговых параметров, AMP/redirect-разворачивание (Firefox, DDG, Brave) | ✅ |
+| `<a ping>`, `navigator.sendBeacon` (arkenfox, Cromite) | ✅ блокируются |
+| Referer: обрезка cross-site до origin (arkenfox XOrigin) | ✅ `document.referrer` + навигации; строгий режим — опция |
+| GPC / DNT (Cromite, DDG) | ✅ `navigator.globalPrivacyControl` + заголовки основных запросов |
+| Сторонние cookies (Brave, Cromite) | ✅ выключены; инкогнито — отдельный профиль WebView |
+| Очистка при закрытии вкладки/выходе (arkenfox sanitizeOnShutdown) | ✅ |
+| Canvas/Audio/WebGL/measureText/ClientRects — шум по сессии+сайту (Brave farbling, Cromite) | ✅ |
+| WebGL vendor/renderer — единое распространённое значение (Tor-подход) | ✅ «Qualcomm / Adreno (TM) 640»; WebGL можно выключить |
+| hardwareConcurrency/deviceMemory/platform/connection (Brave, Tor) | ✅ 8 / 4 / «Linux armv8l» |
+| screen = окно, colorDepth 24 (Brave) | ✅ |
+| Часовой пояс UTC (Tor RFP) | ✅ опция (по умолчанию выкл — ломает сайты) |
+| UA без модели и версии + Client Hints low-entropy (Cromite, Chrome UA reduction) | ✅ «Android 10; K», Chrome/NN.0.0.0; UserAgentMetadata где WebView поддерживает |
+| Battery, Gamepad, WebGPU, IdleDetection, Keyboard, getInstalledRelatedApps, датчики, MIDI, SpeechSynthesis-голоса (Cromite) | ✅ удалены/пустые |
+| WebRTC (Cromite, Tor) | ✅ выключен по умолчанию; режим «только relay» |
+| Cookie-баннеры авто-отказ (DDG, Brave) | ✅ встроенное расширение |
+| HTTPS-only (Tor, Brave) | ✅ с предупреждением |
+| Телеметрия WebView, Safe Browsing (Cromite) | ✅ MetricsOptOut, SafeBrowsing off, X-Requested-With пустой |
+| Letterboxing, allowlist шрифтов (Tor) | ❌ невозможно в WebView без форка движка |
+| DNT/GPC/Referer на подресурсах, заголовки Client Hints | ❌ WebView не даёт менять заголовки подзапросов |
+| Партиционирование хранилища по eTLD+1 (Brave, Firefox TCP) | ⚠️ частично: встроенное в Chromium + очистка; per-tab профили — нет |
+| Защита в Web Workers, невидимая для CreepJS | ❌ JS-подмена детектируется |
+
+## Результаты тестов (эмулятор Android 11, WebView 83)
+
+* adblock.turtlecute.org (продолжение d3ward/toolz): **91 %** (120/132).
+* EFF Cover Your Tracks: **«strong protection against Web tracking»**; Canvas и AudioContext — «randomized».
+* BrowserLeaks: WebRTC — **No Leak** (RTCPeerConnection отсутствует); Canvas — подпись уникальна в каждой сессии/на каждом сайте (шум);
+  WebGL — Unmasked Vendor «Qualcomm»; navigator — «Linux armv8l», 8 ядер, 4 ГБ; screen = окно.
+
 ## Сборка локально
 
 ```bash
@@ -48,7 +86,7 @@ cd ../.. && ./gradlew :app:testReleaseUnitTest :app:assembleRelease
 
 * Движок — System WebView: качество изоляции сайтов и обновления безопасности зависят от установленного WebView.
 * Защита от отпечатков работает на уровне JavaScript (как расширения), а не в движке, как в Brave/Cromite/Tor: не покрывает
-  Web Workers, определяется продвинутыми тестами (CreepJS видит подмену), шрифты и размер экрана не подменяются.
+  Web Workers, определяется продвинутыми тестами (CreepJS видит подмену), шрифты не подменяются (screen = размер окна, как в Brave).
 * Referer сторонних подресурсов и заголовки Client Hints регулирует сам WebView (по умолчанию `strict-origin-when-cross-origin`).
 * WebView не даёт перехватывать тело POST-запросов и WebSocket, поэтому часть запросов блокируется только по URL.
 * DNS-over-HTTPS — экспериментально, через локальный прокси; WebRTC UDP идёт мимо прокси (поэтому WebRTC по умолчанию выключен).

@@ -64,6 +64,14 @@ class AdblockEngine private constructor(private var ptr: Long) : AutoCloseable {
             return AdblockEngine(ptr)
         }
 
+        fun fromSerialized(data: ByteArray, resourcesJson: String?): AdblockEngine {
+            AdblockNative.load()
+            val ptr = AdblockNative.deserialize(data)
+            require(ptr != 0L) { "adblock engine deserialize failed" }
+            if (resourcesJson != null) AdblockNative.useResources(ptr, resourcesJson)
+            return AdblockEngine(ptr)
+        }
+
         fun fromRules(rules: String) = fromLists(listOf(rules to true), null)
     }
 }

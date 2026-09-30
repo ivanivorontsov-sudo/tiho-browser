@@ -147,7 +147,14 @@ private fun AddressBar(b: Browser, tab: Tab, onShield: () -> Unit) {
     var field by remember(tab.id) { mutableStateOf(TextFieldValue("")) }
     val focus = LocalFocusManager.current
     val fr = remember { FocusRequester() }
-    LaunchedEffect(url, focused) { if (!focused) field = TextFieldValue(url) }
+    LaunchedEffect(url, focused) {
+        if (!focused) field = TextFieldValue(url)
+        else {
+            // Select the whole address after the tap has placed the cursor (Chrome-like: typing replaces it).
+            kotlinx.coroutines.delay(60)
+            field = field.copy(selection = TextRange(0, field.text.length))
+        }
+    }
     val host = remember(url) { try { java.net.URI(url).host?.removePrefix("www.") } catch (_: Exception) { null } }
     val shieldsOn = b.prefs.adblock && !b.app.adblock.isAllowlisted(host)
 

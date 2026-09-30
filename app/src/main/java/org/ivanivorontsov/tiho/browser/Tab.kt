@@ -249,10 +249,12 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean)
 
     private fun emptyResponse(mime: String) = WebResourceResponse(mime, "utf-8", ByteArrayInputStream(ByteArray(0)))
 
-    /** Stream that fails on read → Chromium reports a network error (like a real blocked request). */
-    private fun failingResponse() = WebResourceResponse("text/plain", "utf-8", object : InputStream() {
-        override fun read(): Int = throw IOException("blocked by Тихо")
-    })
+    /**
+     * Response for a blocked sub-resource. WebView cannot fail a request with ERR_BLOCKED_BY_CLIENT, so we answer
+     * 403 with an empty body: <script>/<img>/<link> fire `error` like in a real blocker. fetch()/XHR are
+     * rejected earlier, in page JS (privacy.js → Bridge.block), because an HTTP error would still resolve fetch().
+     */
+    private fun blockedResponse() = WebResourceResponse("text/plain", "utf-8", 403, "Blocked", mapOf("Cache-Control" to "no-store"), ByteArrayInputStream(ByteArray(0)))
 
     // ======================================================================== WebViewClient
     inner class Client : WebViewClient() {
@@ -297,7 +299,7 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean)
             val engine = app.adblock.engine ?: run { app.adblock.awaitReady(); app.adblock.engine } ?: return null
             val types = RequestTypes.guess(u, false, request.requestHeaders["Accept"])
             return when (val d = engine.checkAny(u, src, types)) {
-                is AdblockEngine.Decision.Block -> { countBlock(request.url.host); failingResponse() }
+                is AdblockEngine.Decision.Block -> { countBlock(request.url.host); blockedResponse() }
                 is AdblockEngine.Decision.Redirect -> {
                     countBlock(request.url.host)
                     redirectResponse(d.dataUrl) ?: emptyResponse("text/plain")
@@ -431,6 +433,18 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean)
                 c.exceptions,
             )
             return if (sel.isEmpty()) null else sel.joinToString("\n")
+        }
+
+        /** fetch()/XHR/sendBeacon pre-check from page JS: true → the call is rejected like ERR_BLOCKED_BY_CLIENT. */
+        @JavascriptInterface
+        fun block(token: String?, u: String?, type: String?): Boolean {
+            if (!ok(token) || u == null || !prefs.adblock || !u.startsWith("http")) return false
+            val src = pageUrl.ifEmpty { return false }
+            if (app.adblock.isAllowlisted(hostOf(src))) return false
+            val e = app.adblock.engine ?: run { app.adblock.awaitReady(); app.adblock.engine } ?: return false
+            val d = e.check(u, src, type ?: "xmlhttprequest")
+            if (d is AdblockEngine.Decision.Block) { countBlock(hostOf(u)); return true }
+            return false
         }
 
         @JavascriptInterface fun gmGet(token: String?, id: String, key: String): String? = if (ok(token)) app.extensions.gmGet(id, key) else null

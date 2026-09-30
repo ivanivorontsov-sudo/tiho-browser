@@ -16,7 +16,7 @@ class Bookmarks(ctx: Context) {
         if (raw == null) {
             // Useful defaults: privacy test pages + Russian news.
             items += listOf(
-                Bookmark("Проверка блокировщика (d3ward)", "https://d3ward.github.io/toolz/adblock.html"),
+                Bookmark("Проверка блокировщика", "https://adblock.turtlecute.org/"),
                 Bookmark("Cover Your Tracks (EFF)", "https://coveryourtracks.eff.org/"),
                 Bookmark("BrowserLeaks", "https://browserleaks.com/"),
                 Bookmark("DuckDuckGo", "https://duckduckgo.com/"),

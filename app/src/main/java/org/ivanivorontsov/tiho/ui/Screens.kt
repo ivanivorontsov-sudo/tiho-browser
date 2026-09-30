@@ -132,7 +132,7 @@ fun PrivacyScreen(b: Browser) {
             SwitchRow("Стирать всё при выходе", "Cookies, кэш, localStorage, IndexedDB, история, Service Workers", p.clearOnExit) { p.clearOnExit = it }
             SwitchRow("Очищать сайт при закрытии вкладки", "Удаляет cookies и хранилище сайтов вкладки, если они не открыты в других", p.clearOnTabClose) { p.clearOnTabClose = it }
             SwitchRow("Cookies", null, p.cookies) { p.cookies = it }
-            SwitchRow("Сторонние cookies", "Блокировка межсайтового отслеживания", p.thirdPartyCookies, enabled = p.cookies) { p.thirdPartyCookies = it }
+            SwitchRow("Разрешить сторонние cookies", "По умолчанию выключено: защита от межсайтового слежения", p.thirdPartyCookies, enabled = p.cookies) { p.thirdPartyCookies = it }
             ListItem(headlineContent = { Text("Очистить данные сейчас") }, leadingContent = { Icon(Icons.Outlined.LocalFireDepartment, null) },
                 modifier = Modifier.clickable { b.clearNow() })
 
@@ -148,9 +148,9 @@ fun PrivacyScreen(b: Browser) {
             SwitchRow("Блокировать ping и beacon", "<a ping>, navigator.sendBeacon", p.blockPings) { p.blockPings = it }
             SwitchRow("Global Privacy Control", "Sec-GPC: 1 и navigator.globalPrivacyControl", p.gpc) { p.gpc = it }
             SwitchRow("Do Not Track", "DNT: 1", p.dnt) { p.dnt = it }
-            SwitchRow("Строгий Referer", "Только origin между сайтами для ссылок (meta referrer)", p.strictReferrer) { p.strictReferrer = it }
+            SwitchRow("Строгий Referer", "Не передавать Referer другим сайтам (политика same-origin)", p.strictReferrer) { p.strictReferrer = it }
             SwitchRow("Блокировать всплывающие окна", null, p.blockPopups) { p.blockPopups = it }
-            SwitchRow("Блокировать авто-переадресации", "Скрытые переходы на другие сайты без нажатия", p.blockAutoRedirects) { p.blockAutoRedirects = it }
+            SwitchRow("Блокировать авто-переадресации", "Строгий режим: переходы на другие сайты без нажатия. Может мешать входу через сторонние сервисы", p.blockAutoRedirects) { p.blockAutoRedirects = it }
 
             SectionHeader("Отпечаток браузера")
             SwitchRow("Защита от отпечатков", "Шум Canvas/Audio/WebGL/шрифтов (как в Brave), подмена характеристик устройства", p.antiFp) { p.antiFp = it }

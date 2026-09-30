@@ -55,28 +55,49 @@ class Adblock(private val ctx: Context, private val prefs: Prefs) {
         return try { ctx.assets.open("filters/${l.id}.txt").bufferedReader().use { it.readText() } } catch (e: Exception) { null }
     }
 
+    /** Serialized-engine cache: parsing ~250k rules costs seconds on slow phones, deserializing is fast. */
+    private val cacheDir = File(ctx.filesDir, "engine").apply { mkdirs() }
+
     fun rebuild() {
         val t0 = System.currentTimeMillis()
         try {
-            val lists = mutableListOf<Pair<String, Boolean>>()
             val enabled = prefs.enabledLists
-            var count = 0
-            for (l in allLists()) {
-                val on = l.id in enabled || (l.group == "cookies" && prefs.sp.getBoolean("ext_cookies", true))
-                if (!on) continue
-                listText(l)?.let { lists += it to l.trusted; count++ }
+            val active = allLists().filter { l -> l.id in enabled || (l.group == "cookies" && prefs.sp.getBoolean("ext_cookies", true)) }
+            // Cache key: app version + active lists (+ mtime of updated copies) + custom rules.
+            val keySrc = buildString {
+                append(ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime)
+                active.forEach { l -> append('|').append(l.id).append(':').append(File(dir, "${l.id}.txt").let { if (it.exists()) it.lastModified() else 0 }) }
+                append('|').append(prefs.customRules.hashCode())
             }
-            if (prefs.customRules.isNotBlank()) lists += prefs.customRules to false
+            val key = Integer.toHexString(keySrc.hashCode()) + "-" + Integer.toHexString(keySrc.reversed().hashCode())
+            val cached = File(cacheDir, "$key.bin")
             val res = ctx.assets.open("adblock/resources.json").bufferedReader().use { it.readText() }
-            val e = AdblockEngine.fromLists(lists, res)
+            var e: AdblockEngine? = null
+            var count = active.size
+            var lines = prefs.sp.getInt("engine_rules_$key", 0)
+            if (cached.exists()) {
+                e = try { AdblockEngine.fromSerialized(cached.readBytes(), res) } catch (t: Throwable) { cached.delete(); null }
+            }
+            if (e == null) {
+                val lists = mutableListOf<Pair<String, Boolean>>()
+                count = 0
+                for (l in active) listText(l)?.let { lists += it to l.trusted; count++ }
+                if (prefs.customRules.isNotBlank()) lists += prefs.customRules to false
+                e = AdblockEngine.fromLists(lists, res)
+                lines = lists.sumOf { p -> p.first.count { it == '\n' } }
+                try {
+                    cacheDir.listFiles()?.forEach { it.delete() }
+                    e.serialize()?.let { File(cacheDir, "$key.tmp").apply { writeBytes(it); renameTo(cached) } }
+                    prefs.sp.edit().putInt("engine_rules_$key", lines).apply()
+                } catch (_: Throwable) {}
+            }
             val old = engine
             engine = e
             cosmeticCache.evictAll()
             old?.close()
-            val lines = lists.sumOf { p -> p.first.count { it == '\n' } }
             ruleStats = "$count списков, ~${lines / 1000} тыс. правил"
             status = "Готово за ${System.currentTimeMillis() - t0} мс"
-            Log.i("Tiho", "adblock engine: $ruleStats in ${System.currentTimeMillis() - t0} ms")
+            Log.i("Tiho", "adblock engine: $ruleStats in ${System.currentTimeMillis() - t0} ms (cache=${cached.exists()})")
         } catch (t: Throwable) {
             status = "Ошибка загрузки фильтров: ${t.message}"
             Log.e("Tiho", "adblock build failed", t)
@@ -166,6 +187,8 @@ class Adblock(private val ctx: Context, private val prefs: Prefs) {
             FilterList("cname-ads", "AdGuard CNAME (реклама)", "Скрытая через CNAME реклама", "https://raw.githubusercontent.com/AdguardTeam/cname-trackers/master/data/combined_disguised_ads.txt", group = "privacy"),
             FilterList("cname-trackers", "AdGuard CNAME (трекеры, 7 МБ)", "Скрытые через CNAME трекеры — большой список, загружается по кнопке «Обновить»", "https://raw.githubusercontent.com/AdguardTeam/cname-trackers/master/data/combined_disguised_trackers.txt", bundled = false, group = "privacy"),
             FilterList("peterlowe", "Peter Lowe's list", "Рекламные и трекинговые серверы", "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext"),
+            FilterList("hagezi-light", "HaGeZi Multi Light", "Реклама, трекеры, телеметрия приложений и производителей (DNS-уровень)", "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/light.txt", group = "privacy"),
+            FilterList("adguard-mobile", "AdGuard Mobile Ads", "Реклама мобильных сайтов и SDK — загружается по кнопке «Обновить»", "https://filters.adtidy.org/extension/ublock/filters/11.txt", bundled = false),
             FilterList("ublock-badware", "uBlock – Badware risks", "Мошеннические и опасные сайты", "https://ublockorigin.github.io/uAssets/filters/badware.min.txt", group = "security"),
             FilterList("easylist-cookie", "EasyList Cookie", "Баннеры cookie (расширение «Без cookie-баннеров»)", "https://secure.fanboy.co.nz/fanboy-cookiemonster.txt", group = "cookies"),
             FilterList("ublock-cookies", "uBlock – Cookie notices", "Баннеры cookie (расширение «Без cookie-баннеров»)", "https://ublockorigin.github.io/uAssets/filters/annoyances-cookies.txt", group = "cookies"),
