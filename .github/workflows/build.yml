@@ -1,0 +1,114 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Android SDK (preinstalled on the runner) + required packages
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "sdk.dir=$SDK" > local.properties
+          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" > /dev/null
+          echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Cache Rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-ndk
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/tihoadblock/target
+          key: rust-${{ runner.os }}-${{ hashFiles('rust/tihoadblock/Cargo.lock') }}
+
+      - name: Rust toolchain + cargo-ndk
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android armv7-linux-androideabi
+          command -v cargo-ndk || cargo install cargo-ndk --locked
+
+      - name: Rust tests + native libraries (Brave adblock-rust via JNI)
+        working-directory: rust/tihoadblock
+        run: |
+          cargo test --release --lib
+          cargo build --release --lib   # host build, used by JVM unit tests
+          cargo ndk -t arm64-v8a -t armeabi-v7a -P 26 -o ../../app/src/main/jniLibs build --release --lib
+          ls -la ../../app/src/main/jniLibs/*
+
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.TIHO_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            mkdir -p keystore
+            echo "$KEYSTORE_B64" | base64 -d > keystore/privbrowser-release.p12
+          else
+            echo "::warning::TIHO_KEYSTORE_B64 secret is not set, the APK will be unsigned"
+          fi
+
+      - name: Unit tests and release build (R8)
+        env:
+          TIHO_KEYSTORE_PASSWORD: ${{ secrets.TIHO_KEYSTORE_PASSWORD }}
+          TIHO_KEY_ALIAS: ${{ secrets.TIHO_KEY_ALIAS }}
+          TIHO_KEY_PASSWORD: ${{ secrets.TIHO_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest :app:assembleRelease
+
+      - name: Verify signature and size
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK"
+          SIZE=$(stat -c %s "$APK"); echo "APK size: $SIZE bytes"
+          test "$SIZE" -lt 26214400
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p dist && cp "$APK" "dist/tiho-browser-$VERSION.apk"
+          (cd dist && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - name: Test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: app/build/reports/tests
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tiho-browser-apk
+          path: dist/*
+          if-no-files-found: error
+
+      - name: GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$VERSION"
+          NOTES="Тихо $VERSION — автоматическая сборка из ${GITHUB_SHA::7}. APK подписан ключом privbrowser (RSA-4096), SHA-256 сертификата: F1:72:85:19:60:CF:08:63:34:B7:14:91:FB:DC:48:89:86:1E:1E:EB:60:7E:4F:2D:40:6C:BD:86:FF:90:D6:D0"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+            gh release edit "$TAG" --notes "$NOTES"
+          else
+            gh release create "$TAG" dist/* --title "Тихо $VERSION" --notes "$NOTES" --target "$GITHUB_SHA"
+          fi

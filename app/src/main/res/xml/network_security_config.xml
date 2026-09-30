@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Cleartext allowed only because the user may explicitly choose «Открыть по HTTP»; HTTPS-only mode is on by default.
+         User-installed CAs are NOT trusted (system CAs only). -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -1,0 +1,14 @@
+.gradle/
+build/
+local.properties
+keystore.properties
+keystore/
+*.p12
+*.jks
+*.keystore
+rust/*/target/
+app/src/main/jniLibs/
+.idea/
+*.iml
+captures/
+.kotlin/
