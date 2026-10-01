@@ -96,6 +96,8 @@ jobs:
           mkdir in && cp upd/app/update-v2.json upd/app/update-v2.json.minisig in/
           V=$(python3 -c 'import json;print(json.load(open("in/update-v2.json"))["version_name"])')
           printf '{"version":"%s","refresh":true}\n' "$V" > in/meta.json
-          cd upd && git checkout --orphan incoming && git rm -rqf . && cp -r ../in/* . && git add -A
+          # Push-triggered workflows run from the pushed branch: ship tiho-updates main's publish-app.yml unchanged.
+          mkdir -p in/.github/workflows && cp upd/.github/workflows/publish-app.yml in/.github/workflows/
+          cd upd && git checkout --orphan incoming && git rm -rqf . && rm -rf app && cp -r ../in/. . && git add -A
           git -c user.name="tiho-ci" -c user.email="tiho-ci@users.noreply.github.com" commit -qm "incoming: re-signed update-v2.json ($V)"
           git push -f origin incoming
