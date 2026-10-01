@@ -162,6 +162,8 @@ jobs:
           # GitHub rejects files > 100 MB in git: ship APKs in 45 MB parts, publish-app.yml joins and re-verifies them.
           (cd in/apks && for f in *.apk; do split -b 45M "$f" "$f.part-" && rm "$f"; done && ls -l)
           printf '{"version":"%s","version_code":%s,"gecko":"%s","source":"%s"}\n' "$VERSION" "$VC" "$GV" "$(git rev-parse --short HEAD)" > in/meta.json
-          cd upd && git checkout --orphan incoming && git rm -rqf . && cp -r ../in/* . && git add -A
+          # Push-triggered workflows run from the pushed branch: ship tiho-updates main's publish-app.yml unchanged.
+          mkdir -p in/.github/workflows && cp upd/.github/workflows/publish-app.yml in/.github/workflows/
+          cd upd && git checkout --orphan incoming && git rm -rqf . && rm -rf app && cp -r ../in/. . && git add -A
           git -c user.name="tiho-ci" -c user.email="tiho-ci@users.noreply.github.com" commit -qm "incoming: Тихо $VERSION (GeckoView $GV)"
           git push -f origin incoming
