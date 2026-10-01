@@ -1,0 +1,32 @@
+{
+ "format": 1,
+ "name": "tiho-content",
+ "version": 7,
+ "created": "2026-10-01T07:09:12Z",
+ "expires": 1793430552,
+ "min_app_version": 3,
+ "min_webview_major": 148,
+ "files": [
+  {
+   "path": "filters/test.txt",
+   "url": "packs/7/filters/test.txt",
+   "sha256": "792d78f8dc11f3e53dab626f42a6a2e5da9cbea74e61324e927102c7f5b481e6",
+   "size": 15,
+   "kind": "filter"
+  },
+  {
+   "path": "js/privacy.js",
+   "url": "packs/7/js/privacy.js",
+   "sha256": "903de0737ff5d035e8de2cdf4700e52a6f76b0ad9b3febec5aaf092725a664f7",
+   "size": 8,
+   "kind": "code"
+  },
+  {
+   "path": "payment-domains.json",
+   "url": "packs/7/payment-domains.json",
+   "sha256": "16d103b208e0db787d98991ebdb9f697362b1c48d0ef2dbc99ea48e40c38e52d",
+   "size": 40,
+   "kind": "data"
+  }
+ ]
+}

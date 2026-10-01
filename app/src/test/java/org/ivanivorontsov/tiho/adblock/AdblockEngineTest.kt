@@ -102,3 +102,21 @@ class AdblockEngineTest {
         }
     }
 }
+
+/** The rebuild canary must pass with the real bundled lists (a failing canary rolls back every content pack). */
+class AdblockCanaryTest {
+    @Test fun canaryPassesWithBundledLists() {
+        val dir = File(System.getProperty("tiho.assets") ?: return, "filters")
+        val ids = listOf("easylist", "easyprivacy", "ruadlist", "ublock-filters", "ublock-quickfixes", "ublock-unbreak", "ublock-privacy",
+            "ublock-badware", "peterlowe", "payment-unbreak")
+        val lists = ids.mapNotNull { File(dir, "$it.txt").takeIf { f -> f.exists() }?.readText()?.let { t -> t to (it == "payment-unbreak") } }
+        val res = File(dir.parentFile, "adblock/resources.json").takeIf { it.exists() }?.readText()
+        AdblockEngine.fromLists(lists, res).use { e ->
+            val d = e.check("https://securepubads.g.doubleclick.net/tag/js/gpt.js", "https://example.com/", "script")
+            println("canary decision: ${d::class.simpleName}")
+            assertTrue("canary: ${d::class.simpleName}", Adblock.canaryOk(e))
+            // payment-unbreak must not leak into ordinary sites
+            assertNotEquals(Decision.Exception, e.check("https://h.online-metrix.net/fp/tags.js", "https://news.example/", "script"))
+        }
+    }
+}

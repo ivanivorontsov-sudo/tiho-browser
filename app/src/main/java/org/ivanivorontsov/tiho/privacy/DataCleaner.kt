@@ -12,6 +12,8 @@ import java.io.File
 /** "Fire button": wipes everything WebView stores. */
 object DataCleaner {
     const val INCOGNITO_PROFILE = "tiho-incognito"
+    /** WebView profile «Банк» for «Безопасный режим оплаты» tabs (separate cookies/storage). */
+    const val BANK_PROFILE = "tiho-bank"
 
     /**
      * Removes WebView's on-disk state *before* WebView is initialised in this process
@@ -37,13 +39,19 @@ object DataCleaner {
         webView?.apply { clearCache(true); clearHistory(); clearFormData(); clearSslPreferences() }
         WebView.clearClientCertPreferences(null)
         clearIncognito()
+        clearBank()
     }
 
+    /** Clears the «Банк» profile (payment tabs). */
+    fun clearBank() = clearProfile(BANK_PROFILE)
+
     /** Clears the separate incognito profile (cookies/storage of incognito tabs). */
-    fun clearIncognito() {
+    fun clearIncognito() = clearProfile(INCOGNITO_PROFILE)
+
+    private fun clearProfile(name: String) {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
         try {
-            ProfileStore.getInstance().getProfile(INCOGNITO_PROFILE)?.let { p ->
+            ProfileStore.getInstance().getProfile(name)?.let { p ->
                 p.cookieManager.removeAllCookies(null)
                 p.webStorage.deleteAllData()
             }

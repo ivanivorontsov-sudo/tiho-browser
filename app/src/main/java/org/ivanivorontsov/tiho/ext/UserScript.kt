@@ -23,7 +23,20 @@ data class UserScript(
     val requireCode: String = "",
     val sourceUrl: String? = null,
     val enabled: Boolean = true,
+    /** SHA-256 of [code], pinned at install (shown to the user). */
+    val sha256: String = "",
+    /** SHA-256 of every @require, pinned at install. */
+    val requireHashes: Map<String, String> = emptyMap(),
+    /** «Доверять на оплате»: may run in payment-safe tabs, but only while [bundleHash] equals [trustedHash]. */
+    val trustedPayment: Boolean = false,
+    val trustedHash: String = "",
+    /** Set when the stored code no longer matches the pinned hash (tampering / corruption): script is not run. */
+    val tampered: Boolean = false,
 ) {
+    /** Hash of everything that is executed: @require code + script code. */
+    val bundleHash: String get() = UserScriptPin.sha256(requireCode + "\n;\n" + code)
+    val runsOnPayment: Boolean get() = trustedPayment && trustedHash.isNotEmpty() && trustedHash == bundleHash && !tampered
+
     /** Regexes (JS-compatible source strings) for URLs the script runs on / must skip. */
     val includeRegexes: List<String> get() = matches.map(::matchPatternToRegex) + includes.map(::globToRegex)
     val excludeRegexes: List<String> get() = excludeMatches.map(::matchPatternToRegex) + excludes.map(::globToRegex)

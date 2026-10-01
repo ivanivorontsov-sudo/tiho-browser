@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import org.ivanivorontsov.tiho.TihoApp
 import org.ivanivorontsov.tiho.browser.Browser
+import org.ivanivorontsov.tiho.security.SchemePolicy
 
 class MainActivity : ComponentActivity() {
     lateinit var browser: Browser
@@ -42,23 +43,34 @@ class MainActivity : ComponentActivity() {
             try { fileLauncher.launch(intent) } catch (_: Exception) { cb(null); fileCallback = null }
         }
         browser.applyDoh()
-        browser.newTab(startUrl(intent))
+        when (val r = intentInput(intent)) {
+            is SchemePolicy.Result.Load -> browser.newTab(r.url)
+            null -> browser.newTab()
+            is SchemePolicy.Result.Text -> { browser.newTab(); if (r.text.isNotBlank()) browser.navigate(r.text) }
+            is SchemePolicy.Result.Blocked -> { browser.newTab(); browser.snack("Ссылка из другого приложения заблокирована: ${r.reason}") }
+        }
+        browser.updateWindowSecurity()
         setContent { TihoTheme(app.prefs.theme) { BrowserApp(browser) } }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        startUrl(intent)?.let { browser.newTab(it) }
+        intentInput(intent)?.let { browser.openFromIntent(it) }
     }
 
-    private fun startUrl(i: Intent?): String? = when (i?.action) {
-        Intent.ACTION_VIEW -> i.dataString
-        Intent.ACTION_SEND -> i.getStringExtra(Intent.EXTRA_TEXT)?.let { extractUrl(it) }
-        Intent.ACTION_WEB_SEARCH -> i.getStringExtra(android.app.SearchManager.QUERY)
+    /** Input from other apps goes through the scheme whitelist: file:, content:, javascript:, data:, intent: are refused. */
+    private fun intentInput(i: Intent?): SchemePolicy.Result? = when (i?.action) {
+        Intent.ACTION_VIEW -> SchemePolicy.fromIntent(i.dataString)
+        Intent.ACTION_SEND -> SchemePolicy.fromSharedText(i.getStringExtra(Intent.EXTRA_TEXT))
+        Intent.ACTION_WEB_SEARCH -> SchemePolicy.fromSharedText(i.getStringExtra(android.app.SearchManager.QUERY))
         else -> null
     }
 
-    private fun extractUrl(t: String): String = Regex("https?://\\S+").find(t)?.value ?: t
+    override fun onResume() {
+        super.onResume()
+        browser.updateWindowSecurity()
+        browser.engine.value = browser.engineState()
+    }
 
     override fun onPause() {
         super.onPause()

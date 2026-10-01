@@ -10,6 +10,22 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <!-- 1.1.0: payment-safe mode hides other apps' overlay windows (Android 12+) -->
+    <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+    <!-- 1.1.0: signed in-app updates via PackageInstaller (the user confirms every install) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- JobScheduler network constraint for the daily signed-update check -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- To show which app an intent:// link opens (package visibility, Android 11+) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+        </intent>
+        <package android:name="com.google.android.webview" />
+        <package android:name="com.android.chrome" />
+    </queries>
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -60,5 +76,18 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".update.UpdateJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <receiver
+            android:name=".update.InstallReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.ivanivorontsov.tiho.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -1,13 +1,62 @@
 /* Тихо — content script: cosmetic filtering (adblock-rust), procedural filters, cookie-banner
  * auto-reject, YouTube ad skipping, force-dark, ping stripping. Runs at document-start. */
-const tihoContent = function (W, C) {
+const tihoContent = function (W, C, TB, payM) {
   const D = W.document;
-  const B = W[C.bridge];
   const host = W.location.hostname;
-  let info = {};
-  if (B && /^https?:$/.test(W.location.protocol)) {
-    try { info = JSON.parse(B.cosmetic(C.token, W.location.href) || '{}'); } catch (e) { info = {}; }
+  const isWeb = /^https?:$/.test(W.location.protocol);
+  const onReady0 = (f) => { if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', f, { once: true }); else f(); };
+
+  // ---------------------------------------------------------------- payment page heuristic («Похоже на оплату»)
+  // Card-number/CVC autocomplete, card fields, payment iframes, PaymentRequest → reported to the app, which offers
+  // to reopen the page in «Безопасный режим оплаты». Read-only: nothing on the page is changed.
+  if (TB && isWeb) {
+    const sig = new Set();
+    let sent = '';
+    const report = () => { const k = Array.from(sig).sort().join(','); if (k && k !== sent) { sent = k; TB.send('pay', { sig: Array.from(sig), u: W.location.href, top: W === W.top }); } };
+    if (W.PaymentRequest) {
+      const PR = W.PaymentRequest;
+      const Wrapped = function PaymentRequest(...a) { sig.add('payment-request'); report(); return Reflect.construct(PR, a, new.target || Wrapped); };
+      Wrapped.prototype = PR.prototype; Object.setPrototypeOf(Wrapped, PR);
+      try { Object.defineProperty(PR.prototype, 'constructor', { value: Wrapped, writable: true, configurable: true }); } catch (e) {}
+      W.PaymentRequest = Wrapped;
+    }
+    const scan = () => {
+      try {
+        for (const el of D.querySelectorAll('input[autocomplete],input[name],input[id],input[placeholder],iframe,button,input[type=submit]')) {
+          const ac = (el.getAttribute('autocomplete') || '').toLowerCase();
+          if (/\bcc-number\b/.test(ac)) sig.add('cc-number');
+          if (/\bcc-csc\b/.test(ac)) sig.add('cc-csc');
+          if (/\bcc-exp/.test(ac)) sig.add('cc-exp');
+          if (/\bcc-name\b/.test(ac)) sig.add('cc-name');
+          if (el.tagName === 'INPUT') {
+            const n = ((el.name || '') + ' ' + (el.id || '') + ' ' + (el.getAttribute('placeholder') || '') + ' ' + (el.getAttribute('aria-label') || '')).toLowerCase();
+            if (/card.?num|cardnumber|ccnum|номер карты|pan\b/.test(n)) sig.add('card-number-name');
+            if (/\b(cvc|cvv2?|cvn|csc|cvd)\b|cvc|cvv/.test(n)) sig.add('card-cvc');
+            if (/exp(iry|iration)?.?(date|month|year)|mm ?\/ ?yy|срок действия/.test(n)) sig.add('card-exp-name');
+            if (/card.?holder|владел/.test(n)) sig.add('card-holder');
+          } else if (el.tagName === 'IFRAME') {
+            let h = ''; try { h = new URL(el.src, W.location.href).hostname; } catch (e) {}
+            if (h && payM && payM(h)) sig.add('payment-iframe');
+          } else {
+            const t = (el.textContent || el.value || '').trim().toLowerCase();
+            if (t.length < 40 && /^(оплатить|pay( now)?|перейти к оплате|оплата картой|pay \S+)$/.test(t)) sig.add('pay-button');
+          }
+        }
+      } catch (e) {}
+      report();
+    };
+    onReady0(() => {
+      scan();
+      const mo = new W.MutationObserver(() => { if (!mo.t) mo.t = setTimeout(() => { mo.t = 0; scan(); }, 700); });
+      mo.observe(D.documentElement, { childList: true, subtree: true });
+      setTimeout(() => mo.disconnect(), 30000);
+    });
   }
+
+  if (!TB || !isWeb) return;
+  TB.call('cosm', { u: W.location.href }).then((r) => { let info = {}; try { info = JSON.parse(r || '{}'); } catch (e) {} main(info); });
+
+  function main(info) {
   const shieldsOn = !info.off;
   const addCss = (css) => {
     if (!css) return;
@@ -25,7 +74,7 @@ const tihoContent = function (W, C) {
   if (shieldsOn && C.adblock) {
     addCss(info.css);
     // Generic class/id rules: collect classes & ids and ask the engine which are ads (Brave's approach).
-    if (!info.gh && B) {
+    if (!info.gh) {
       const seenC = new Set(), seenI = new Set();
       let newC = [], newI = [];
       const collect = (el) => {
@@ -37,10 +86,9 @@ const tihoContent = function (W, C) {
       const flush = () => {
         if (!newC.length && !newI.length) return;
         const c = newC, i = newI; newC = []; newI = [];
-        try {
-          const r = B.hidden(C.token, W.location.href, c.join(' '), i.join(' '));
+        TB.call('hid', { u: W.location.href, c: c.join(' '), i: i.join(' ') }).then((r) => {
           if (r) addCss(r.split('\n').filter(Boolean).map((s) => s + '{display:none!important}').join('\n'));
-        } catch (e) {}
+        });
       };
       const flushSoon = throttle(flush, 60);
       const scan = (root) => { collect(root); const all = root.querySelectorAll ? root.querySelectorAll('[class],[id]') : []; for (let k = 0; k < all.length; k++) collect(all[k]); };
@@ -195,5 +243,6 @@ const tihoContent = function (W, C) {
       addCss('html{filter:invert(0.9) hue-rotate(180deg)!important;background:#fff!important}' +
         'img,video,picture,canvas,iframe,embed,object,svg image,[style*="background-image"]{filter:invert(1) hue-rotate(180deg)!important}');
     });
+  }
   }
 };

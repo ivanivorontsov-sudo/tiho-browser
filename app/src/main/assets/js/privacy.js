@@ -21,7 +21,7 @@ const tihoPrivacy = (function () {
     return (['co', 'com', 'org', 'net', 'gov', 'edu', 'ac', 'msk', 'spb'].includes(two) && p[p.length - 1].length === 2) ? p.slice(-3).join('.') : p.slice(-2).join('.');
   }
 
-  return function apply(W, C) {
+  return function apply(W, C, TB) {
     if (!W || patched.has(W)) return;
     patched.add(W);
     const O = W.Object, R = W.Reflect;
@@ -57,6 +57,30 @@ const tihoPrivacy = (function () {
     function remove(obj, name) { try { if (obj && name in obj) delete obj[name]; } catch (e) {} }
     const N = W.Navigator && W.Navigator.prototype;
 
+    // ---------------------------------------------------------------- WebRTC IP-leak protection
+    const webrtc = (mode) => {
+      if (mode === 0) {
+        ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCRtpSender', 'RTCRtpReceiver', 'RTCRtpTransceiver', 'RTCSctpTransport', 'RTCIceTransport', 'RTCDtlsTransport'].forEach((n) => remove(W, n));
+      } else if (mode === 1 && W.RTCPeerConnection) {
+        // Force TURN relay: no host/srflx candidates → neither local nor public IP is exposed.
+        const PC = W.RTCPeerConnection;
+        const relay = (cfg) => O.assign({}, cfg || {}, { iceTransportPolicy: 'relay' });
+        const Wrapped = function RTCPeerConnection(cfg, ...rest) { return R.construct(PC, [relay(cfg), ...rest], new.target || Wrapped); };
+        Wrapped.prototype = PC.prototype;
+        O.setPrototypeOf(Wrapped, PC);
+        O.defineProperty(PC.prototype, 'constructor', { value: Wrapped, writable: true, configurable: true });
+        mask(Wrapped, PC);
+        method(PC.prototype, 'setConfiguration', function (orig, a) { return orig.call(this, relay(a[0])); });
+        W.RTCPeerConnection = Wrapped;
+        if (W.webkitRTCPeerConnection) W.webkitRTCPeerConnection = Wrapped;
+      }
+    };
+    // «Безопасный режим оплаты»: no fingerprint noise, no UA/tz/hardware spoofing, no blocker hooks.
+    // Only WebRTC stays relay-only (never fully removed here: some 3-DS / bank flows probe for it).
+    if (C.payMin) { webrtc(C.webrtc === 2 ? 2 : 1); return; }
+    webrtc(C.webrtc);
+
+
     // ---------------------------------------------------------------- privacy signals
     if (C.gpc) {
       if (N && !('globalPrivacyControl' in N)) {
@@ -66,23 +90,6 @@ const tihoPrivacy = (function () {
       }
     }
     if (C.dnt) getter(N, 'doNotTrack', () => '1');
-
-    // ---------------------------------------------------------------- WebRTC IP-leak protection
-    if (C.webrtc === 0) {
-      ['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'RTCRtpSender', 'RTCRtpReceiver', 'RTCRtpTransceiver', 'RTCSctpTransport', 'RTCIceTransport', 'RTCDtlsTransport'].forEach((n) => remove(W, n));
-    } else if (C.webrtc === 1 && W.RTCPeerConnection) {
-      // Force TURN relay: no host/srflx candidates → neither local nor public IP is exposed.
-      const PC = W.RTCPeerConnection;
-      const relay = (cfg) => O.assign({}, cfg || {}, { iceTransportPolicy: 'relay' });
-      const Wrapped = function RTCPeerConnection(cfg, ...rest) { return R.construct(PC, [relay(cfg), ...rest], new.target || Wrapped); };
-      Wrapped.prototype = PC.prototype;
-      O.setPrototypeOf(Wrapped, PC);
-      O.defineProperty(PC.prototype, 'constructor', { value: Wrapped, writable: true, configurable: true });
-      mask(Wrapped, PC);
-      method(PC.prototype, 'setConfiguration', function (orig, a) { return orig.call(this, relay(a[0])); });
-      W.RTCPeerConnection = Wrapped;
-      if (W.webkitRTCPeerConnection) W.webkitRTCPeerConnection = Wrapped;
-    }
 
     // ---------------------------------------------------------------- beacons / hyperlink auditing
     if (C.pings) {
@@ -125,20 +132,35 @@ const tihoPrivacy = (function () {
     // ---------------------------------------------------------------- blocker parity for fetch()/XHR
     // In Chrome a blocked request fails with ERR_BLOCKED_BY_CLIENT. WebView can only answer with an HTTP response,
     // which would *resolve* fetch(); so script-initiated requests are checked against adblock-rust first.
-    if (C.adblock && C.bridge) {
-      const B = W[C.bridge];
-      if (B && B.block) {
-        const abs = (u) => { try { return new W.URL(u, W.location.href).href; } catch (e) { return ''; } };
-        const isBlocked = (u) => { const a = abs(u); if (!/^https?:/.test(a)) return false; try { return B.block(C.token, a, 'xmlhttprequest'); } catch (e) { return false; } };
-        method(W, 'fetch', function (orig, a) {
-          const r = a[0];
-          const u = r && typeof r === 'object' && 'url' in r ? r.url : String(r);
-          if (isBlocked(u)) return W.Promise.reject(new W.TypeError('Failed to fetch'));
-          return orig.apply(this, a);
+    if (C.adblock && TB) {
+      const abs = (u) => { try { return new W.URL(u, W.location.href).href; } catch (e) { return ''; } };
+      const check = (u) => { const a = abs(u); if (!/^https?:/.test(a)) return W.Promise.resolve(false); return TB.call('blk', { u: a }).then((r) => r === true, () => false); };
+      method(W, 'fetch', function (orig, a) {
+        const self = this;
+        const r = a[0];
+        const u = r && typeof r === 'object' && 'url' in r ? r.url : String(r);
+        return check(u).then((b) => (b ? W.Promise.reject(new W.TypeError('Failed to fetch')) : orig.apply(self, a)));
+      });
+      const XP = W.XMLHttpRequest && W.XMLHttpRequest.prototype;
+      if (XP) {
+        const st = new WeakMap();
+        const XO = XP.open;
+        method(XP, 'open', function (orig, a) { st.set(this, Array.from(a)); return orig.apply(this, a); });
+        // Async check at send(): a blocked XHR is re-opened to a port Chromium refuses (ERR_UNSAFE_PORT) →
+        // genuine network error, status 0. Synchronous XHRs rely on network-level blocking only.
+        method(XP, 'send', function (orig, a) {
+          const args = st.get(this);
+          if (!args || args[2] === false) return orig.apply(this, a);
+          const u = abs(args[1]);
+          if (!/^https?:/.test(u)) return orig.apply(this, a);
+          const xhr = this;
+          check(u).then((b) => {
+            try {
+              if (b) { const na = args.slice(); na[1] = 'https://0.0.0.0:1/'; XO.apply(xhr, na); orig.call(xhr); }
+              else orig.apply(xhr, a);
+            } catch (e) {}
+          });
         });
-        const XP = W.XMLHttpRequest && W.XMLHttpRequest.prototype;
-        // Redirect blocked XHRs to a port Chromium refuses (ERR_UNSAFE_PORT) → genuine network error, status 0.
-        method(XP, 'open', function (orig, a) { if (a.length > 1 && isBlocked(a[1])) { a = Array.from(a); a[1] = 'https://0.0.0.0:1/'; } return orig.apply(this, a); });
       }
     }
 
@@ -349,7 +371,7 @@ const tihoPrivacy = (function () {
     // ---------------------------------------------------------------- same-origin iframes created from script
     // (a classic bypass: grab pristine APIs from a fresh about:blank iframe)
     const IF = W.HTMLIFrameElement && W.HTMLIFrameElement.prototype;
-    getter(IF, 'contentWindow', function (orig) { const w = orig.call(this); try { if (w) apply(w, C); } catch (e) {} return w; });
-    getter(IF, 'contentDocument', function (orig) { const d = orig.call(this); try { if (d && d.defaultView) apply(d.defaultView, C); } catch (e) {} return d; });
+    getter(IF, 'contentWindow', function (orig) { const w = orig.call(this); try { if (w) apply(w, C, TB); } catch (e) {} return w; });
+    getter(IF, 'contentDocument', function (orig) { const d = orig.call(this); try { if (d && d.defaultView) apply(d.defaultView, C, TB); } catch (e) {} return d; });
   };
 })();

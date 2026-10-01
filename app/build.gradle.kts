@@ -27,8 +27,8 @@ android {
         applicationId = "org.ivanivorontsov.tiho"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.1.0"
         resourceConfigurations += listOf("ru")
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -68,7 +68,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
     packaging {
-        resources { excludes += listOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/*.version", "kotlin/**", "DebugProbesKt.bin") }
+        resources { excludes += listOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/*.version", "kotlin/**", "DebugProbesKt.bin", "META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/versions/**/OSGI-INF/**", "org/bouncycastle/**/*.properties") }
         jniLibs { useLegacyPackaging = true } // compress the Rust .so inside the APK (smaller download)
     }
     dependenciesInfo {
@@ -101,7 +101,17 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // Ed25519 + BLAKE2b for minisign verification of content packs / update.json (Android has Ed25519 only on API 33+)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20231013")
+}
+
+// Release APKs are only ever signed with the privbrowser release key (keystore/privbrowser-release.p12 locally,
+// TIHO_* secrets in CI). No fallback to the debug key and no unsigned release artifacts.
+tasks.matching { it.name == "packageRelease" || it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+    doFirst {
+        if (!canSign) throw GradleException("Release build requires the privbrowser release key (keystore.properties or TIHO_* env); refusing to produce an unsigned/debug-signed APK")
+    }
 }

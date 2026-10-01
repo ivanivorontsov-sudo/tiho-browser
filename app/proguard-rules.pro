@@ -3,3 +3,5 @@
 # JavaScript bridge methods
 -keepclassmembers class * { @android.webkit.JavascriptInterface <methods>; }
 -keepattributes JavascriptInterface
+# BouncyCastle: only the lightweight Ed25519/BLAKE2b classes are used directly (no JCA provider registration)
+-dontwarn org.bouncycastle.**

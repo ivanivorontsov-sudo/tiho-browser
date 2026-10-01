@@ -16,7 +16,8 @@ class Prefs(context: Context) {
     private val listeners = mutableListOf<() -> Unit>()
     fun onChange(l: () -> Unit) { listeners += l }
     /** Keys that are statistics, not settings: no reconfiguration on change. */
-    private val silent = setOf("total_blocked", "last_filter_update")
+    private val silent = setOf("total_blocked", "last_filter_update", "content_status", "content_last_check", "min_webview_pack",
+        "list_pins", "webview_dismissed", "payment_known", "app_update_status", "app_last_check")
     private fun changed(key: String) { if (key !in silent) listeners.forEach { it() } }
 
     private inner class B(val key: String, def: Boolean) : ReadWriteProperty<Any, Boolean> {
@@ -97,6 +98,31 @@ class Prefs(context: Context) {
     var extraListUrls by S("extra_list_urls", "")
     var lastFilterUpdate by S("last_filter_update", "")
     var totalBlocked by I("total_blocked", 0)
+
+    // --- Security (1.1.0)
+    var phishing by B("phishing", true)
+    /** Domains the user confirmed via «Похоже на оплату» (always payment-safe). */
+    var paymentUserDomains by SS("payment_user_domains", emptySet())
+    /** Union of every payment-domains.json ever accepted from a signed pack (add-only). */
+    var paymentKnown by SS("payment_known", emptySet())
+    var paymentThirdPartyCookies by B("payment_3p_cookies", true)
+    var listPins by S("list_pins", "{}")
+    var webviewDismissed by S("webview_dismissed", "")
+
+    // --- Updates (signed content packs + APK)
+    var contentAuto by B("content_auto", true)
+    var contentWifiOnly by B("content_wifi", true)
+    /** «Только списки, без кода»: never apply JS from content packs. */
+    var contentNoCode by B("content_no_code", false)
+    var contentStatus by S("content_status", "")
+    var contentLastCheck by S("content_last_check", "")
+    var minWebViewPack by I("min_webview_pack", 0)
+    var appUpdateCheck by B("app_update_check", true)
+    var appUpdateStatus by S("app_update_status", "")
+    var appLastCheck by S("app_last_check", "")
+    var contentHighWater: Long
+        get() = sp.getLong("content_high_water", 0L)
+        set(v) { sp.edit().putLong("content_high_water", v).apply() }
 
     fun searchUrl(q: String): String {
         val e = java.net.URLEncoder.encode(q, "UTF-8")
