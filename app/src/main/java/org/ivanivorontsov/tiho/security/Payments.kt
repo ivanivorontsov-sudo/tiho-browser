@@ -25,7 +25,7 @@ class Payments(private val prefs: Prefs) {
 
     /**
      * Synchronous JS guard (no bridge, no async): true if this frame or ANY ancestor frame is a payment page.
-     * Uses location.ancestorOrigins (Chromium) so a 3-DS iframe inside a merchant page is also detected.
+     * Uses location.ancestorOrigins / window.top / document.referrer so a 3-DS iframe inside a merchant page is also detected.
      */
     fun guardJs(): String = guardJs(domainsJson())
 
@@ -37,7 +37,8 @@ return(h)=>{h=String(h||'').toLowerCase().replace(/\.$/,'').replace(/^www\./,'')
 if(p.length>=3&&acs.test(p.slice(0,-2).join('.')+'.'))return true;for(let i=0;i<p.length-1;i++){if(D.has(p.slice(i).join('.')))return true;}return false;};})();
 const __tihoPay=(function(){try{if(__tihoPayM(location.hostname))return true;const ao=location.ancestorOrigins;
 if(ao)for(let i=0;i<ao.length;i++){try{if(__tihoPayM(new URL(ao[i]).hostname))return true;}catch(e){}}}catch(e){}
-try{if(window.top!==window&&__tihoPayM(window.top.location.hostname))return true;}catch(e){}return false;})();
+try{if(window.top!==window&&__tihoPayM(window.top.location.hostname))return true;}catch(e){}
+try{if(window.top!==window&&document.referrer&&__tihoPayM(new URL(document.referrer).hostname))return true;}catch(e){}return false;})();
 """.trim()
     }
 }

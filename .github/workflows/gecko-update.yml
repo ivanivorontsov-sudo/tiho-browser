@@ -1,0 +1,101 @@
+name: gecko-update
+
+# Daily: if maven.mozilla.org has a newer stable GeckoView than gecko.properties, bump it (versionCode + 1),
+# commit + tag, then build, sign with the privbrowser key and publish through build.yml.
+# Also keeps the signed update-v2.json fresh (re-signs it before it expires) when there is nothing new.
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild and publish even if GeckoView did not change
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gecko-update
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      bump: ${{ steps.c.outputs.bump }}
+      tag: ${{ steps.c.outputs.tag }}
+      refresh: ${{ steps.c.outputs.refresh }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - id: c
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          META=https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/maven-metadata.xml
+          LATEST=$(curl -fsSL --retry 3 "$META" | grep -oP '<release>\K[^<]+')
+          CUR=$(grep -oP '^geckoVersion=\K.*' gecko.properties)
+          VC=$(grep -oP '^versionCode=\K.*' gecko.properties)
+          echo "maven: $LATEST, current: $CUR"
+          # The AAR must really exist (metadata can be ahead of the CDN for a few minutes).
+          curl -fsI "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/$LATEST/geckoview-$LATEST.pom" > /dev/null
+          NEWER=$(printf '%s\n%s\n' "$CUR" "$LATEST" | sort -V | tail -1)
+          if [ "$LATEST" != "$CUR" ] && [ "$NEWER" = "$LATEST" ] || [ "$FORCE" = "true" ]; then
+            NVC=$((VC + 1)); NVN="2.0.$((NVC - 5))"
+            sed -i "s/^geckoVersion=.*/geckoVersion=$LATEST/; s/^versionCode=.*/versionCode=$NVC/; s/^versionName=.*/versionName=$NVN/" gecko.properties
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -qam "GeckoView $LATEST → Тихо $NVN ($NVC)"
+            git tag "v$NVN"
+            git push origin HEAD:main "v$NVN"
+            echo "bump=true" >> "$GITHUB_OUTPUT"; echo "tag=v$NVN" >> "$GITHUB_OUTPUT"; echo "refresh=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "bump=false" >> "$GITHUB_OUTPUT"
+            EXP=$(curl -fsSL https://raw.githubusercontent.com/ivanivorontsov-sudo/tiho-updates/main/app/update-v2.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["expires"])' || echo 0)
+            LEFT=$(( (EXP - $(date +%s)) / 86400 ))
+            echo "update-v2.json expires in $LEFT days"
+            if [ "$LEFT" -lt 15 ]; then echo "refresh=true" >> "$GITHUB_OUTPUT"; else echo "refresh=false" >> "$GITHUB_OUTPUT"; fi
+          fi
+
+  build:
+    needs: check
+    if: needs.check.outputs.bump == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      ref: ${{ needs.check.outputs.tag }}
+      publish: true
+    secrets: inherit
+
+  refresh:
+    needs: check
+    if: needs.check.outputs.refresh == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Re-sign update-v2.json (replay protection keeps descriptors short-lived)
+        env:
+          CI_KEY: ${{ secrets.TIHO_CI_SIGNING_KEY }}
+          CI_KEY_ID: ${{ secrets.TIHO_CI_SIGNING_KEY_ID }}
+          TIHO_SIGN_PASSPHRASE: ${{ secrets.TIHO_CI_SIGNING_PASSPHRASE }}
+          DEPLOY_KEY: ${{ secrets.TIHO_UPDATES_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          python3 -c "import cryptography" 2>/dev/null || pip install --quiet cryptography
+          K=$(mktemp -d); chmod 700 "$K"
+          printf '%s\n' "$CI_KEY" > "$K/tiho-content-ci.key"; printf '%s\n' "$CI_KEY_ID" > "$K/tiho-content-ci.key.id"
+          mkdir -p ~/.ssh && printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/tiho_updates && chmod 600 ~/.ssh/tiho_updates
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tiho_updates -o IdentitiesOnly=yes"
+          git clone --depth 1 git@github.com:ivanivorontsov-sudo/tiho-updates.git upd
+          python3 tools/tiho-publish.py resign --dir "$K" --key ci --file upd/app/update-v2.json --days 45
+          python3 tools/tiho-publish.py verify --pub upd/keys/tiho-content-ci.pub --file upd/app/update-v2.json
+          rm -rf "$K"
+          mkdir in && cp upd/app/update-v2.json upd/app/update-v2.json.minisig in/
+          V=$(python3 -c 'import json;print(json.load(open("in/update-v2.json"))["version_name"])')
+          printf '{"version":"%s","refresh":true}\n' "$V" > in/meta.json
+          cd upd && git checkout --orphan incoming && git rm -rqf . && cp -r ../in/* . && git add -A
+          git -c user.name="tiho-ci" -c user.email="tiho-ci@users.noreply.github.com" commit -qm "incoming: re-signed update-v2.json ($V)"
+          git push -f origin incoming

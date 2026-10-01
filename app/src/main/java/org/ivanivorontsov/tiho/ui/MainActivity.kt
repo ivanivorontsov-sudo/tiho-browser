@@ -4,8 +4,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.view.WindowManager
-import android.webkit.WebChromeClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -18,38 +16,48 @@ import org.ivanivorontsov.tiho.security.SchemePolicy
 class MainActivity : ComponentActivity() {
     lateinit var browser: Browser
     private var permCallback: ((Boolean) -> Unit)? = null
-    private var fileCallback: ((Array<Uri>?) -> Unit)? = null
+    private var fileCallback: ((List<Uri>?) -> Unit)? = null
 
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { res ->
         permCallback?.invoke(res.values.any { it }); permCallback = null
     }
     private val fileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        fileCallback?.invoke(WebChromeClient.FileChooserParams.parseResult(r.resultCode, r.data)); fileCallback = null
+        val d = r.data
+        val uris = if (r.resultCode != RESULT_OK || d == null) null else {
+            val clip = d.clipData
+            if (clip != null) (0 until clip.itemCount).map { clip.getItemAt(it).uri } else listOfNotNull(d.data)
+        }
+        fileCallback?.invoke(uris); fileCallback = null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val app = application as TihoApp
-        if (app.prefs.flagSecure) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         browser = Browser(app)
         browser.activity = this
         browser.requestPermissions = { perms, cb ->
             if (perms.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) cb(true)
             else { permCallback = cb; permLauncher.launch(perms) }
         }
-        browser.launchFileChooser = { intent, cb ->
+        browser.pickFiles = { types, multiple, cb ->
+            val i = Intent(Intent.ACTION_GET_CONTENT).addCategory(Intent.CATEGORY_OPENABLE).setType(if (types.size == 1) types[0] else "*/*")
+            if (types.size > 1) i.putExtra(Intent.EXTRA_MIME_TYPES, types.toTypedArray())
+            if (multiple) i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
             fileCallback = cb
-            try { fileLauncher.launch(intent) } catch (_: Exception) { cb(null); fileCallback = null }
+            try { fileLauncher.launch(i) } catch (_: Exception) { cb(null); fileCallback = null }
         }
-        browser.applyDoh()
         when (val r = intentInput(intent)) {
-            is SchemePolicy.Result.Load -> browser.newTab(r.url)
+            is SchemePolicy.Result.Load -> browser.open(r.url, null)
             null -> browser.newTab()
             is SchemePolicy.Result.Text -> { browser.newTab(); if (r.text.isNotBlank()) browser.navigate(r.text) }
             is SchemePolicy.Result.Blocked -> { browser.newTab(); browser.snack("Ссылка из другого приложения заблокирована: ${r.reason}") }
         }
+        if (browser.tabs.isEmpty()) browser.newTab()
         browser.updateWindowSecurity()
+        // Daily signed update check also happens here (the JobScheduler job does not survive reboots).
+        val last = app.prefs.appLastOk.toLongOrNull() ?: 0L
+        if (app.prefs.appUpdateCheck && System.currentTimeMillis() - last > 20L * 3600 * 1000) app.appUpdater.check(false)
         setContent { TihoTheme(app.prefs.theme) { BrowserApp(browser) } }
     }
 
@@ -66,20 +74,12 @@ class MainActivity : ComponentActivity() {
         else -> null
     }
 
-    override fun onResume() {
-        super.onResume()
-        browser.updateWindowSecurity()
-        browser.engine.value = browser.engineState()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        android.webkit.CookieManager.getInstance().flush()
-    }
+    override fun onResume() { super.onResume(); browser.updateWindowSecurity() }
 
     override fun onDestroy() {
         if (isFinishing && browser.tabs.isNotEmpty()) browser.exit {}
         browser.activity = null
+        browser.geckoView = null
         super.onDestroy()
     }
 

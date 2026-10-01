@@ -1,49 +1,82 @@
 package org.ivanivorontsov.tiho
 
 import android.app.Application
-import org.ivanivorontsov.tiho.adblock.Adblock
+import android.util.Log
+import org.ivanivorontsov.tiho.browser.Browser
 import org.ivanivorontsov.tiho.data.Bookmarks
 import org.ivanivorontsov.tiho.data.Downloads
 import org.ivanivorontsov.tiho.ext.Extensions
-import org.ivanivorontsov.tiho.privacy.DataCleaner
-import org.ivanivorontsov.tiho.privacy.Scripts
+import org.ivanivorontsov.tiho.gecko.Addons
+import org.ivanivorontsov.tiho.gecko.Engine
 import org.ivanivorontsov.tiho.security.Payments
+import org.ivanivorontsov.tiho.security.Threats
 import org.ivanivorontsov.tiho.update.AppUpdater
 import org.ivanivorontsov.tiho.update.ContentPacks
 import org.ivanivorontsov.tiho.update.UpdateJob
+import java.io.File
 
 /**
- * No analytics, no crash reporting, no Google services. The app's own network use: filter lists (button), and —
- * if enabled — a daily check of the signed content pack / update.json in the public tiho-updates repo (HTTPS only).
+ * No analytics, no crash reporting, no Google services. The app's own network use: AMO (only when you open the
+ * add-on catalogue) and — if enabled — a daily check of the signed content pack / update descriptor in the public
+ * tiho-updates repo (HTTPS only). Gecko telemetry, studies and crash reports are disabled by prefs.
  */
 class TihoApp : Application() {
     lateinit var prefs: Prefs
     lateinit var payments: Payments
     lateinit var contentPacks: ContentPacks
     lateinit var appUpdater: AppUpdater
-    lateinit var adblock: Adblock
+    lateinit var threats: Threats
     lateinit var extensions: Extensions
     lateinit var bookmarks: Bookmarks
     lateinit var downloads: Downloads
+    lateinit var engine: Engine
+    lateinit var addons: Addons
+    var browser: Browser? = null
 
     override fun onCreate() {
         super.onCreate()
+        // GeckoView runs extra processes (:tab, :gpu, …) that also instantiate the Application: keep them lean.
+        if (!isMainProcess()) return
         prefs = Prefs(this)
-        // Private mode: previous session's WebView data is wiped before WebView even starts
-        // (covers the case where the app was killed and «Выход» never ran).
-        if (prefs.clearOnExit) DataCleaner.wipeFilesBeforeWebViewInit(this)
+        migrateFrom1x()
         payments = Payments(prefs).also { it.refresh() }
         contentPacks = ContentPacks(this)
+        threats = Threats(this)
         contentPacks.init()
+        threats.rebuild()
         appUpdater = AppUpdater(this)
-        Scripts.init(this)
-        adblock = Adblock(this, prefs)
-        adblock.packFile = { contentPacks.file(it) }
-        adblock.packVersion = { contentPacks.version }
-        adblock.start()
         extensions = Extensions(this, prefs).also { it.load() }
+        extensions.onChanged = { if (this::addons.isInitialized) addons.pushConfig() }
         bookmarks = Bookmarks(this)
         downloads = Downloads(this)
-        UpdateJob.schedule(this, prefs.contentAuto, prefs.contentWifiOnly)
+        engine = Engine(this)
+        addons = Addons(this)
+        engine.runtimeAddons = { addons }
+        engine.start()
+        // Private mode: the previous session was not closed via «Выход» (process killed) → wipe now.
+        if (prefs.clearOnExit && prefs.sp.getBoolean("dirty", false)) engine.clearAllData { markClean() }
+        addons.start()
+        prefs.onChange { engine.applySettings() }
+        UpdateJob.schedule(this, prefs.contentAuto || prefs.appUpdateCheck, prefs.contentWifiOnly && !prefs.appUpdateCheck)
+    }
+
+    fun markDirty() { if (!prefs.sp.getBoolean("dirty", false)) prefs.sp.edit().putBoolean("dirty", true).apply() }
+    fun markClean() { prefs.sp.edit().putBoolean("dirty", false).apply() }
+
+    private fun isMainProcess(): Boolean =
+        if (android.os.Build.VERSION.SDK_INT >= 28) getProcessName() == packageName else !(currentProcessName() ?: packageName).contains(':')
+
+    private fun currentProcessName(): String? = try { File("/proc/self/cmdline").readText().trim('\u0000', ' ', '\n') } catch (_: Exception) { null }
+
+    /** 1.x (WebView) leftovers: WebView profiles, adblock engine caches, filter lists. */
+    private fun migrateFrom1x() {
+        if (prefs.sp.getInt("data_version", 1) >= 2) return
+        try {
+            val data = File(applicationInfo.dataDir)
+            listOf(File(data, "app_webview"), File(data, "app_textures"), File(cacheDir, "WebView"), File(filesDir, "adblock"),
+                File(filesDir, "filters"), File(cacheDir, "adblock")).forEach { if (it.exists()) it.deleteRecursively() }
+            File(data, "shared_prefs").listFiles()?.filter { it.name.startsWith("WebViewChromiumPrefs") }?.forEach { it.delete() }
+        } catch (e: Exception) { Log.w("Tiho", "migration", e) }
+        prefs.sp.edit().putInt("data_version", 2).apply()
     }
 }

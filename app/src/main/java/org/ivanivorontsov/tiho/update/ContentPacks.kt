@@ -3,7 +3,6 @@ package org.ivanivorontsov.tiho.update
 import android.util.Log
 import org.ivanivorontsov.tiho.BuildConfig
 import org.ivanivorontsov.tiho.TihoApp
-import org.ivanivorontsov.tiho.privacy.Scripts
 import org.ivanivorontsov.tiho.security.Net
 import org.ivanivorontsov.tiho.security.PaymentDomains
 import java.io.File
@@ -23,16 +22,9 @@ class ContentPacks(private val app: TihoApp) {
     @Volatile var busy = false
         private set
 
-    /** Built-in floor for the WebView engine; a pack can only raise it. */
-    val minWebViewMajor: Int get() = maxOf(BUILTIN_MIN_WEBVIEW, prefs.minWebViewPack, manifest?.minWebViewMajor ?: 0)
-
     val version: Long get() = manifest?.version ?: 0L
 
-    private val codeAllowed: Boolean
-        get() = !prefs.contentNoCode && (try { File(store.current, "code-allowed").readText() == "true" } catch (_: Exception) { false })
-
     fun file(path: String): File? = if (manifest == null) null else store.file(path)
-    fun codeFile(path: String): File? = if (codeAllowed) file(path) else null
     fun text(path: String): String? = try { file(path)?.readText() } catch (_: Exception) { null }
 
     /** Re-verifies the installed pack's signature at every start (internal storage is trusted, but cheaply checked). */
@@ -51,7 +43,6 @@ class ContentPacks(private val app: TihoApp) {
 
     private fun applyData() {
         val m = manifest ?: return
-        if (m.minWebViewMajor > prefs.minWebViewPack) prefs.minWebViewPack = m.minWebViewMajor
         text("payment-domains.json")?.let { j ->
             try { prefs.paymentKnown = PaymentDomains.merge(emptySet(), prefs.paymentKnown, PaymentDomains.parsePack(j)) } catch (_: Exception) {}
         }
@@ -64,7 +55,8 @@ class ContentPacks(private val app: TihoApp) {
         val updater = ContentPackUpdater(store, verifier)
         val r = updater.update(
             highWater = maxOf(prefs.contentHighWater, version),
-            allowCode = !prefs.contentNoCode,
+            allowCode = false, // 2.0 (GeckoView): pack JS shims and filter lists are not used; uBlock Origin manages its own lists
+            want = { f -> f.path.startsWith("security/") || f.path.startsWith("userscripts/") || f.path == "payment-domains.json" },
             fetchText = { Net.get(TrustedKeys.CONTENT_URL + it, 1024 * 1024) },
             fetchFile = { f -> Net.get(TrustedKeys.CONTENT_URL + f.url, f.size + 1) },
             validate = { reload() },
@@ -86,14 +78,8 @@ class ContentPacks(private val app: TihoApp) {
     /** Loads the currently swapped-in pack and validates it; false triggers rollback. */
     private fun reload(): Boolean {
         init()
-        Scripts.init(app)
-        val ok = app.adblock.rebuild()
-        app.adblock.rebuildThreats()
-        return ok
-    }
-
-    companion object {
-        /** Built-in default when no pack says otherwise (Chrome 140 = Sept 2025; current stable is 154). */
-        const val BUILTIN_MIN_WEBVIEW = 140
+        app.threats.rebuild()
+        app.engine.applyDynamicPrefs()
+        return true
     }
 }

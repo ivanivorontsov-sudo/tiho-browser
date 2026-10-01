@@ -1,8 +1,8 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -19,21 +19,35 @@ val keyAliasName = secret("TIHO_KEY_ALIAS", "keyAlias") ?: "privbrowser"
 val keyPass = secret("TIHO_KEY_PASSWORD", "keyPassword") ?: ksPass
 val canSign = ksFile.exists() && ksPass != null
 
+// Engine + app version (CI bumps these when a new GeckoView stable is published).
+val geckoProps = Properties().apply { rootProject.file("gecko.properties").inputStream().use { load(it) } }
+val geckoVersion: String = geckoProps.getProperty("geckoVersion")
+val appVersionCode = geckoProps.getProperty("versionCode").toInt()
+val appVersionName: String = geckoProps.getProperty("versionName")
+
 android {
     namespace = "org.ivanivorontsov.tiho"
-    compileSdk = 35
+    // GeckoView 157 AAR metadata requires compiling against API 37.1
+    compileSdk { version = release(37) { minorApiLevel = 1 } }
 
     defaultConfig {
         applicationId = "org.ivanivorontsov.tiho"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.1.0"
-        resourceConfigurations += listOf("ru")
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
-            // -PwithX86 adds x86_64 for the emulator build only; release APK stays ARM-only.
-            if (project.hasProperty("withX86")) abiFilters += "x86_64"
+        versionCode = appVersionCode
+        versionName = appVersionName
+        buildConfigField("String", "GECKO_VERSION", "\"$geckoVersion\"")
+        androidResources.localeFilters += listOf("ru")
+    }
+
+    // One APK per ABI (GeckoView is ~45-60 MB per ABI). x86_64 only with -PwithX86 (emulator tests).
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            if (project.hasProperty("withX86")) include("x86_64")
+            isUniversalApk = false
         }
     }
 
@@ -65,23 +79,19 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true; buildConfig = true }
     packaging {
         resources { excludes += listOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/*.version", "kotlin/**", "DebugProbesKt.bin", "META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/versions/**/OSGI-INF/**", "org/bouncycastle/**/*.properties") }
-        jniLibs { useLegacyPackaging = true } // compress the Rust .so inside the APK (smaller download)
+        // GeckoView loads libxul from the APK; keep the libraries compressed for a smaller download.
+        jniLibs { useLegacyPackaging = true }
     }
     dependenciesInfo {
-        // No Google-signed dependency metadata blob in the APK.
         includeInApk = false
         includeInBundle = false
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
         unitTests.all {
-            // JVM unit tests load the same JNI engine compiled for the host (cargo build --release).
-            val lib = rootProject.file("rust/tihoadblock/target/release/libtihoadblock.so")
-            it.systemProperty("tiho.nativeLib", lib.absolutePath)
             it.systemProperty("tiho.assets", project.file("src/main/assets").absolutePath)
         }
     }
@@ -91,17 +101,22 @@ android {
     }
 }
 
+kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
+
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    implementation("org.mozilla.geckoview:geckoview:$geckoVersion") {
+        // No Google Play Services in a privacy browser (only used by GeckoView for WebAuthn/FIDO, disabled via prefs).
+        exclude(group = "com.google.android.gms")
+    }
+    val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(composeBom)
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.activity:activity-compose:1.9.3")
-    implementation("androidx.webkit:webkit:1.14.0")
+    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // Ed25519 + BLAKE2b for minisign verification of content packs / update.json (Android has Ed25519 only on API 33+)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    // Ed25519 + BLAKE2b for minisign verification of content packs / update.json
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 
     testImplementation("junit:junit:4.13.2")

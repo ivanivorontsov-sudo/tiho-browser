@@ -10,8 +10,6 @@ import java.io.File
 
 data class CatalogEntry(val name: String, val description: String, val url: String, val sha256: String)
 
-/** Built-in extension (toggle only). */
-data class BuiltinExt(val id: String, val title: String, val description: String, val prefKey: String, val default: Boolean)
 
 /**
  * Extension system: built-in extensions + user scripts (Greasemonkey/Tampermonkey compatible subset).
@@ -21,20 +19,6 @@ class Extensions(private val ctx: Context, private val prefs: Prefs) {
     val scripts = mutableStateListOf<UserScript>()
     private val file = File(ctx.filesDir, "userscripts.json")
     var onChanged: (() -> Unit)? = null
-
-    val builtins = listOf(
-        BuiltinExt("adblock", "Блокировщик рекламы и трекеров", "Brave adblock-rust: EasyList, EasyPrivacy, RU AdList, uBlock, Peter Lowe, AdGuard", "adblock", true),
-        BuiltinExt("cookies", "Без cookie-баннеров", "Скрывает баннеры согласия и нажимает «Отклонить» (в духе I don't care about cookies)", "ext_cookies", true),
-        BuiltinExt("youtube", "YouTube без рекламы", "Скриптлеты uBlock + пропуск/перемотка рекламных роликов и скрытие промо-блоков", "ext_youtube", true),
-        BuiltinExt("dark", "Тёмные сайты", "Принудительная тёмная тема для светлых сайтов (Dark Reader lite)", "ext_dark", false),
-    )
-
-    fun builtinEnabled(b: BuiltinExt): Boolean = if (b.id == "adblock") prefs.adblock else prefs.sp.getBoolean(b.prefKey, b.default)
-
-    fun setBuiltin(b: BuiltinExt, on: Boolean) {
-        if (b.id == "adblock") prefs.adblock = on else prefs.sp.edit().putBoolean(b.prefKey, on).apply()
-        onChanged?.invoke()
-    }
 
     fun load() {
         scripts.clear()

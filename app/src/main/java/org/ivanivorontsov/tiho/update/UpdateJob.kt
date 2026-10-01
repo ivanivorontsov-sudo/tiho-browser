@@ -15,7 +15,11 @@ import org.ivanivorontsov.tiho.TihoApp
 class UpdateJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         val app = application as TihoApp
-        if (!app.prefs.contentAuto) return false
+        if (!app.prefs.contentAuto) {
+            if (!app.prefs.appUpdateCheck) return false
+            app.appUpdater.check(manual = false) { jobFinished(params, false) }
+            return true
+        }
         app.contentPacks.check(manual = false) {
             if (app.prefs.appUpdateCheck) app.appUpdater.check(manual = false) { jobFinished(params, false) }
             else jobFinished(params, false)

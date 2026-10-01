@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
  */
 class AppUpdater(private val app: TihoApp) {
     private val exec = Executors.newSingleThreadExecutor()
-    private val verifier = AppUpdateVerifier(TrustedKeys.keys)
+    private val verifier = AppUpdateVerifier(TrustedKeys.appKeys)
     val available = mutableStateOf<AppUpdateInfo?>(null)
     val progress = mutableStateOf<String?>(null)
     @Volatile var lastInfo: AppUpdateInfo? = null
@@ -37,8 +37,16 @@ class AppUpdater(private val app: TihoApp) {
         val status = try {
             val bytes = Net.get(TrustedKeys.UPDATE_URL, 256 * 1024)
             val sig = Net.getText(TrustedKeys.UPDATE_URL + ".minisig", 4096)
-            when (val c = verifier.verify(bytes, sig, BuildConfig.VERSION_CODE, TrustedKeys.APK_CERT_SHA256)) {
-                is AppUpdateVerifier.Check.Available -> { lastInfo = c.info; available.value = c.info; "Доступна версия ${c.info.versionName} (подпись проверена)" }
+            val r = verifier.verify(bytes, sig, BuildConfig.VERSION_CODE, TrustedKeys.APK_CERT_SHA256)
+            app.prefs.appLastOk = System.currentTimeMillis().toString()
+            val abis = Build.SUPPORTED_ABIS.toList()
+            val c = when (r) {
+                is AppUpdateVerifier.Check.Available -> AppUpdateVerifier.Check.Available(r.info.forAbis(abis))
+                is AppUpdateVerifier.Check.UpToDate -> AppUpdateVerifier.Check.UpToDate(r.info.forAbis(abis))
+                is AppUpdateVerifier.Check.TooOld -> AppUpdateVerifier.Check.TooOld(r.info.forAbis(abis))
+            }
+            when (c) {
+                is AppUpdateVerifier.Check.Available -> { lastInfo = c.info; available.value = c.info; "Доступна версия ${c.info.versionName}" + (if (c.info.geckoVersion.isNotEmpty()) ", GeckoView ${c.info.geckoVersion}" else "") + " (подпись проверена)" }
                 is AppUpdateVerifier.Check.UpToDate -> { lastInfo = c.info; available.value = null; "Установлена последняя версия ${BuildConfig.VERSION_NAME} (update.json подписан, проверен)" }
                 is AppUpdateVerifier.Check.TooOld -> { lastInfo = c.info; "Версия ${c.info.versionName} требует сначала обновиться вручную" }
             }
@@ -47,6 +55,13 @@ class AppUpdater(private val app: TihoApp) {
         app.prefs.appLastCheck = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("ru")).format(Date())
         Log.i("Tiho", "app update check (manual=$manual): $status")
         done?.invoke(status)
+    }
+
+    /** No verified update check for 14 days (counted from install/upgrade if never checked). */
+    fun stale(): Boolean {
+        val last = app.prefs.appLastOk.toLongOrNull() ?: 0L
+        val since = if (last > 0) last else try { app.packageManager.getPackageInfo(app.packageName, 0).lastUpdateTime } catch (_: Exception) { System.currentTimeMillis() }
+        return System.currentTimeMillis() - since > 14L * 24 * 3600 * 1000
     }
 
     fun canInstall(): Boolean = Build.VERSION.SDK_INT < 26 || app.packageManager.canRequestPackageInstalls()

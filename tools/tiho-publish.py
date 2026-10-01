@@ -34,7 +34,7 @@ def keygen(a):
         with open(pp_path, "w") as f: f.write(secrets.token_urlsafe(32) + "\n")
         os.chmod(pp_path, 0o600)
     pp = passphrase(a.dir)
-    for name in ("primary", "backup"):
+    for name in a.names.split(","):
         sk_path = os.path.join(a.dir, f"tiho-content-{name}.key")
         if os.path.exists(sk_path): sys.exit(f"{sk_path} exists — refusing to overwrite a signing key")
         sk = Ed25519PrivateKey.generate(); key_id = secrets.token_bytes(8)
@@ -103,17 +103,37 @@ def update(a):
     sk, key_id = load_key(a.dir, a.key)
     apk = open(a.apk, "rb").read()
     now = int(time.time())
-    u = {"format": 1, "package": "org.ivanivorontsov.tiho", "version_code": a.version_code, "version_name": a.version_name,
+    u = {"format": 2 if a.abi else 1, "package": "org.ivanivorontsov.tiho", "version_code": a.version_code, "version_name": a.version_name,
          "min_version_code": a.min_version_code, "apk_url": a.url, "sha256": sha256(apk), "size": len(apk),
          "cert_sha256": a.cert, "released": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
          "expires": now + a.days * 86400, "notes": a.notes}
+    if a.gecko: u["gecko_version"] = a.gecko
+    if a.abi:
+        u["apks"] = {}
+        for spec in a.abi:  # abi=path=url
+            abi, path, url = spec.split("=", 2)
+            d = open(path, "rb").read()
+            u["apks"][abi] = {"url": url, "sha256": sha256(d), "size": len(d)}
     os.makedirs(os.path.join(a.repo, "app"), exist_ok=True)
-    p = os.path.join(a.repo, "app", "update.json")
+    p = os.path.join(a.repo, "app", a.out)
     data = (json.dumps(u, ensure_ascii=False, indent=1) + "\n").encode()
     open(p, "wb").write(data)
-    tc = f"tiho-app {a.version_code} {a.version_name} timestamp:{now} file:update.json"
+    tc = f"tiho-app {a.version_code} {a.version_name} timestamp:{now} file:{a.out}"
     open(p + ".minisig", "w").write(sign(sk, key_id, data, tc, "update"))
     print(f"update.json: {a.version_name} ({a.version_code}) sha256 {u['sha256']} size {len(apk)}")
+
+def resign(a):
+    """Refreshes released/expires of an existing descriptor and re-signs it (no new APK)."""
+    sk, key_id = load_key(a.dir, a.key)
+    p = a.file
+    u = json.load(open(p))
+    now = int(time.time())
+    u["expires"] = now + a.days * 86400
+    data = (json.dumps(u, ensure_ascii=False, indent=1) + "\n").encode()
+    open(p, "wb").write(data)
+    tc = f"tiho-app {u['version_code']} {u['version_name']} timestamp:{now} file:{os.path.basename(p)}"
+    open(p + ".minisig", "w").write(sign(sk, key_id, data, tc, "update"))
+    print(f"{os.path.basename(p)}: {u['version_name']} re-signed, expires {time.strftime('%Y-%m-%d', time.gmtime(u['expires']))}")
 
 def verify(a):
     lines = [l for l in open(a.pub).read().splitlines() if l and not l.startswith("untrusted")]
@@ -128,7 +148,7 @@ def verify(a):
     print("OK:", tc)
 
 ap = argparse.ArgumentParser(); sp = ap.add_subparsers(dest="cmd", required=True)
-k = sp.add_parser("keygen"); k.add_argument("--dir", required=True); k.set_defaults(f=keygen)
+k = sp.add_parser("keygen"); k.add_argument("--dir", required=True); k.add_argument("--names", default="primary,backup"); k.set_defaults(f=keygen)
 p = sp.add_parser("pack"); p.add_argument("--dir", required=True); p.add_argument("--src", required=True); p.add_argument("--repo", required=True)
 p.add_argument("--version", type=int, required=True); p.add_argument("--days", type=int, default=45); p.add_argument("--min-app", type=int, default=3)
 p.add_argument("--min-webview", type=int, default=0); p.add_argument("--key", default="primary"); p.set_defaults(f=pack)
@@ -136,6 +156,10 @@ u = sp.add_parser("update"); u.add_argument("--dir", required=True); u.add_argum
 u.add_argument("--version-code", type=int, required=True); u.add_argument("--version-name", required=True); u.add_argument("--min-version-code", type=int, default=1)
 u.add_argument("--url", required=True); u.add_argument("--days", type=int, default=120); u.add_argument("--notes", default="")
 u.add_argument("--cert", default="F1:72:85:19:60:CF:08:63:34:B7:14:91:FB:DC:48:89:86:1E:1E:EB:60:7E:4F:2D:40:6C:BD:86:FF:90:D6:D0")
-u.add_argument("--key", default="primary"); u.set_defaults(f=update)
+u.add_argument("--key", default="primary"); u.add_argument("--out", default="update.json")
+u.add_argument("--abi", action="append", default=[], help="abi=path=url (repeatable)"); u.add_argument("--gecko", default="")
+u.set_defaults(f=update)
+r = sp.add_parser("resign"); r.add_argument("--dir", required=True); r.add_argument("--file", required=True); r.add_argument("--days", type=int, default=45)
+r.add_argument("--key", default="ci"); r.set_defaults(f=resign)
 v = sp.add_parser("verify"); v.add_argument("--pub", required=True); v.add_argument("--file", required=True); v.add_argument("--sig"); v.set_defaults(f=verify)
 a = ap.parse_args(); a.f(a)

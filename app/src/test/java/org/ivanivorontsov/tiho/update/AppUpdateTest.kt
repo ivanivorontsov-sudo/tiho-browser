@@ -43,4 +43,30 @@ class AppUpdateTest {
         assertThrows(PackException::class.java) { v.verifyApk(info, apk.copyOf().also { it[5] = 99 }) }
         assertThrows(PackException::class.java) { v.verifyApk(info, apk + 1) }
     }
+
+    @Test fun perAbiApks() {
+        val other = ByteArray(2000) { (it * 7).toByte() }
+        val j = """{"format":2,"package":"org.ivanivorontsov.tiho","version_code":4,"version_name":"2.0.0","min_version_code":1,
+            "apk_url":"https://github.com/a/b/releases/download/app-v2.0.0/tiho-arm64.apk","sha256":"${Minisign.sha256Hex(apk)}","size":${apk.size},
+            "expires":${now + 1000},"cert_sha256":"$cert","gecko_version":"157.0.20260924084938",
+            "apks":{"arm64-v8a":{"url":"https://github.com/a/b/releases/download/app-v2.0.0/tiho-arm64.apk","sha256":"${Minisign.sha256Hex(apk)}","size":${apk.size}},
+                    "armeabi-v7a":{"url":"https://github.com/a/b/releases/download/app-v2.0.0/tiho-armv7.apk","sha256":"${Minisign.sha256Hex(other)}","size":${other.size}}}}"""
+        val r = check(j, installed = 3, tc = "tiho-app 4 2.0.0 timestamp:$now") as AppUpdateVerifier.Check.Available
+        assertEquals("157.0.20260924084938", r.info.geckoVersion)
+        val v7 = r.info.forAbis(listOf("armeabi-v7a", "armeabi"))
+        assertTrue(v7.apkUrl.endsWith("tiho-armv7.apk"))
+        v.verifyApk(v7, other)
+        assertThrows(PackException::class.java) { v.verifyApk(v7, apk) }
+        assertEquals(r.info.apkUrl, r.info.forAbis(listOf("x86_64")).apkUrl) // unknown ABI → top-level (arm64)
+        assertTrue(r.info.forAbis(listOf("arm64-v8a")).apkUrl.endsWith("tiho-arm64.apk"))
+        // an ABI entry pointing outside GitHub is rejected
+        assertThrows(PackException::class.java) { AppUpdateInfo.parse(j.replace("https://github.com/a/b/releases/download/app-v2.0.0/tiho-armv7.apk", "https://evil.example/x.apk")) }
+    }
+
+    @Test fun ciKeyOnlyForAppUpdates() {
+        val ci = Minisign.parsePublicKey(TrustedKeys.CI)
+        assertTrue(TrustedKeys.appKeys.any { it.keyId.contentEquals(ci.keyId) })
+        assertFalse(TrustedKeys.keys.any { it.keyId.contentEquals(ci.keyId) })
+        assertEquals(3, TrustedKeys.appKeys.size)
+    }
 }

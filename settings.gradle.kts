@@ -10,6 +10,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // GeckoView (release channel) — only org.mozilla.* artifacts are taken from here.
+        maven("https://maven.mozilla.org/maven2/") {
+            content { includeGroupByRegex("org\\.mozilla(\\..*)?") }
+        }
     }
 }
 rootProject.name = "Tiho"

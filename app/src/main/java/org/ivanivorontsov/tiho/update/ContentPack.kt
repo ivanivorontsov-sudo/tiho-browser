@@ -87,13 +87,15 @@ class ContentPackStore(val root: File) {
     fun file(path: String): File? = File(current, path).takeIf { it.isFile && it.canonicalPath.startsWith(current.canonicalPath + File.separator) }
 
     /** Downloads every file of [m] to staging and verifies it. Code files are skipped when [allowCode] is false. */
-    fun stage(m: PackManifest, sig: String, verifier: ContentPackVerifier, allowCode: Boolean, fetch: (PackFile) -> ByteArray): File {
+    fun stage(m: PackManifest, sig: String, verifier: ContentPackVerifier, allowCode: Boolean, fetch: (PackFile) -> ByteArray,
+              want: (PackFile) -> Boolean = { true }): File {
         root.mkdirs()
         staging.deleteRecursively()
         staging.mkdirs()
         try {
             for (f in m.files) {
                 if (f.isCode && !allowCode) continue
+                if (!want(f)) continue
                 val data = fetch(f)
                 verifier.verifyFile(f, data)
                 val out = File(staging, f.path)
@@ -152,6 +154,7 @@ class ContentPackUpdater(
         fetchText: (String) -> ByteArray,
         fetchFile: (PackFile) -> ByteArray,
         validate: () -> Boolean,
+        want: (PackFile) -> Boolean = { true },
         onAccepted: (Long) -> Unit,
     ): Result {
         val mBytes: ByteArray
@@ -163,14 +166,14 @@ class ContentPackUpdater(
         val m = try { verifier.verifyManifest(mBytes, sig, highWater) } catch (e: PackException) {
             return if (e.message == "уже установлена") Result.UpToDate(highWater) else Result.Failed(e.message ?: "ошибка")
         }
-        try { store.stage(m, sig, verifier, allowCode, fetchFile) } catch (e: Exception) { return Result.Failed(e.message ?: "ошибка загрузки") }
+        try { store.stage(m, sig, verifier, allowCode, fetchFile, want) } catch (e: Exception) { return Result.Failed(e.message ?: "ошибка загрузки") }
         try { store.commit() } catch (e: Exception) { return Result.Failed(e.message ?: "ошибка установки") }
         onAccepted(m.version) // high-water mark moves even if validation fails: a broken pack is never retried
         val ok = try { validate() } catch (_: Throwable) { false }
         if (!ok) {
             store.rollback()
             try { validate() } catch (_: Throwable) {}
-            return Result.RolledBack(m.version, "пакет v${m.version} сломал блокировщик — возвращена предыдущая версия")
+            return Result.RolledBack(m.version, "пакет v${m.version} не прошёл проверку — возвращена предыдущая версия")
         }
         return Result.Installed(m.version)
     }

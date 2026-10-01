@@ -1,11 +1,29 @@
 name: build
 
+# Builds Тихо (GeckoView AAR from maven.mozilla.org — Gecko itself is never compiled), runs unit tests,
+# verifies the privbrowser signature and, for v* tags / gecko-update runs, publishes:
+#   1. a GitHub Release in this (private) repo, and
+#   2. the public update channel: APKs + update-v2.json signed with the CI-only Ed25519 key are pushed to the
+#      `incoming` branch of tiho-updates (deploy key); a workflow there creates release app-vX and commits the descriptor.
 on:
   push:
     branches: [main]
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish (Release + tiho-updates)
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+      publish:
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -13,9 +31,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - uses: actions/setup-java@v4
         with:
@@ -23,38 +43,21 @@ jobs:
           java-version: 17
           cache: gradle
 
-      - name: Android SDK (preinstalled on the runner) + required packages
+      - name: Android SDK packages
         run: |
           SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
           echo "sdk.dir=$SDK" > local.properties
           yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" > /dev/null
-          echo "ANDROID_NDK_HOME=$SDK/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          "$SDK/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.1" "build-tools;37.0.0" > /dev/null
+          echo "BT=$SDK/build-tools/37.0.0" >> "$GITHUB_ENV"
 
-      - name: Cache Rust
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/bin/cargo-ndk
-            ~/.cargo/registry
-            ~/.cargo/git
-            rust/tihoadblock/target
-          key: rust-${{ runner.os }}-${{ hashFiles('rust/tihoadblock/Cargo.lock') }}
-
-      - name: Rust toolchain + cargo-ndk
+      - name: Versions
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-          rustup target add aarch64-linux-android armv7-linux-androideabi
-          command -v cargo-ndk || cargo install cargo-ndk --locked
-
-      - name: Rust tests + native libraries (Brave adblock-rust via JNI)
-        working-directory: rust/tihoadblock
-        run: |
-          cargo test --release --lib
-          cargo build --release --lib   # host build, used by JVM unit tests
-          cargo ndk -t arm64-v8a -t armeabi-v7a -P 26 -o ../../app/src/main/jniLibs build --release --lib
-          ls -la ../../app/src/main/jniLibs/*
+          GV=$(grep -oP '^geckoVersion=\K.*' gecko.properties)
+          VC=$(grep -oP '^versionCode=\K.*' gecko.properties)
+          VN=$(grep -oP '^versionName=\K.*' gecko.properties)
+          echo "GV=$GV" >> "$GITHUB_ENV"; echo "VC=$VC" >> "$GITHUB_ENV"; echo "VERSION=$VN" >> "$GITHUB_ENV"
+          echo "Тихо $VN ($VC), GeckoView $GV"
 
       - name: Restore signing key
         env:
@@ -68,26 +71,31 @@ jobs:
           mkdir -p keystore
           echo "$KEYSTORE_B64" | base64 -d > keystore/privbrowser-release.p12
 
-      - name: Unit tests and release build (R8)
+      - name: Unit tests and release build (R8, per-ABI APKs)
         env:
           TIHO_KEYSTORE_PASSWORD: ${{ secrets.TIHO_KEYSTORE_PASSWORD }}
           TIHO_KEY_ALIAS: ${{ secrets.TIHO_KEY_ALIAS }}
           TIHO_KEY_PASSWORD: ${{ secrets.TIHO_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon --console=plain :app:testReleaseUnitTest :app:assembleRelease
+        run: ./gradlew --no-daemon --console=plain :app:testDebugUnitTest :app:assembleRelease -PwithX86
 
-      - name: Verify signature and size
+      - name: Verify signatures and sizes
         run: |
-          APK=app/build/outputs/apk/release/app-release.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "$APK" | tee certs.txt
-          # Must be the privbrowser release certificate (also pinned in the app for in-app updates).
-          grep -qi "certificate SHA-256 digest: f172851960cf086334b71491fbdc4889861e1eeb607e4f2d406cbd86ff90d6d0" certs.txt \
-            || { echo "::error::APK is not signed with the privbrowser release key"; exit 1; }
-          if grep -qi "CN=Android Debug" certs.txt; then echo "::error::debug-signed APK"; exit 1; fi
-          SIZE=$(stat -c %s "$APK"); echo "APK size: $SIZE bytes"
-          test "$SIZE" -lt 26214400
-          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts)
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          mkdir -p dist && cp "$APK" "dist/tiho-browser-$VERSION.apk"
+          mkdir -p dist testdist
+          for ABI in arm64-v8a armeabi-v7a x86_64; do
+            APK=app/build/outputs/apk/release/app-$ABI-release.apk
+            test -f "$APK" || { echo "::error::missing $APK"; exit 1; }
+            "$BT/apksigner" verify --print-certs "$APK" | tee certs.txt
+            # Must be the privbrowser release certificate (also pinned in the app for in-app updates).
+            grep -qi "certificate SHA-256 digest: f172851960cf086334b71491fbdc4889861e1eeb607e4f2d406cbd86ff90d6d0" certs.txt \
+              || { echo "::error::$ABI APK is not signed with the privbrowser release key"; exit 1; }
+            if grep -qi "CN=Android Debug" certs.txt; then echo "::error::debug-signed APK"; exit 1; fi
+            "$BT/aapt2" dump badging "$APK" | head -1
+            SIZE=$(stat -c %s "$APK"); echo "$ABI: $SIZE bytes"
+            if [ "$ABI" = x86_64 ]; then cp "$APK" "testdist/tiho-browser-$VERSION-x86_64.apk"; else cp "$APK" "dist/tiho-browser-$VERSION-$ABI.apk"; fi
+          done
+          A64=$(stat -c %s "dist/tiho-browser-$VERSION-arm64-v8a.apk")
+          # Тихо 1.1.0 accepts APKs up to 64 MiB only, so it updates via the 1.1.1 bridge; 2.x accepts up to 200 MiB.
+          if [ "$A64" -ge 209715200 ]; then echo "::error::arm64 APK is $A64 bytes (> 200 MiB in-app update limit)"; exit 1; fi
           (cd dist && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: Test reports
@@ -104,16 +112,56 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-      - name: GitHub Release
-        if: github.event_name == 'push'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tiho-browser-x86_64-test-apk
+          path: testdist/*
+          if-no-files-found: error
+
+      - name: GitHub Release (tiho-browser)
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="v$VERSION"
-          NOTES="Тихо $VERSION — автоматическая сборка из ${GITHUB_SHA::7}. APK подписан ключом privbrowser (RSA-4096), SHA-256 сертификата: F1:72:85:19:60:CF:08:63:34:B7:14:91:FB:DC:48:89:86:1E:1E:EB:60:7E:4F:2D:40:6C:BD:86:FF:90:D6:D0"
+          NOTES="Тихо $VERSION на GeckoView $GV (готовый AAR с maven.mozilla.org). APK для arm64-v8a и armeabi-v7a (+ x86_64 для эмуляторов/Chromebook), подписаны ключом privbrowser (RSA-4096), SHA-256 сертификата: F1:72:85:19:60:CF:08:63:34:B7:14:91:FB:DC:48:89:86:1E:1E:EB:60:7E:4F:2D:40:6C:BD:86:FF:90:D6:D0. Сборка из $(git rev-parse --short HEAD)."
           if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
+            gh release upload "$TAG" dist/* testdist/* --clobber
             gh release edit "$TAG" --notes "$NOTES"
           else
-            gh release create "$TAG" dist/* --title "Тихо $VERSION" --notes "$NOTES" --target "$GITHUB_SHA"
+            gh release create "$TAG" dist/* testdist/* --title "Тихо $VERSION" --notes "$NOTES" --target "$(git rev-parse HEAD)"
           fi
+
+      - name: Publish to tiho-updates (update-v2.json signed with the CI key)
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.publish
+        env:
+          CI_KEY: ${{ secrets.TIHO_CI_SIGNING_KEY }}
+          CI_KEY_ID: ${{ secrets.TIHO_CI_SIGNING_KEY_ID }}
+          TIHO_SIGN_PASSPHRASE: ${{ secrets.TIHO_CI_SIGNING_PASSPHRASE }}
+          DEPLOY_KEY: ${{ secrets.TIHO_UPDATES_DEPLOY_KEY }}
+        run: |
+          set -euo pipefail
+          for v in CI_KEY CI_KEY_ID TIHO_SIGN_PASSPHRASE DEPLOY_KEY; do test -n "${!v}" || { echo "::error::secret for $v missing"; exit 1; }; done
+          python3 -c "import cryptography" 2>/dev/null || pip install --quiet cryptography
+          K=$(mktemp -d); chmod 700 "$K"
+          printf '%s\n' "$CI_KEY" > "$K/tiho-content-ci.key"; printf '%s\n' "$CI_KEY_ID" > "$K/tiho-content-ci.key.id"
+          mkdir -p ~/.ssh && printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/tiho_updates && chmod 600 ~/.ssh/tiho_updates
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/tiho_updates -o IdentitiesOnly=yes"
+          git clone --depth 1 git@github.com:ivanivorontsov-sudo/tiho-updates.git upd
+          BASE="https://github.com/ivanivorontsov-sudo/tiho-updates/releases/download/app-v$VERSION"
+          A64="dist/tiho-browser-$VERSION-arm64-v8a.apk"; A7="dist/tiho-browser-$VERSION-armeabi-v7a.apk"; X64="testdist/tiho-browser-$VERSION-x86_64.apk"
+          python3 tools/tiho-publish.py update --dir "$K" --key ci --repo upd --out update-v2.json \
+            --apk "$A64" --url "$BASE/$(basename $A64)" \
+            --abi "arm64-v8a=$A64=$BASE/$(basename $A64)" --abi "armeabi-v7a=$A7=$BASE/$(basename $A7)" --abi "x86_64=$X64=$BASE/$(basename $X64)" \
+            --version-code "$VC" --version-name "$VERSION" --gecko "$GV" --days 45 \
+            --notes "Тихо $VERSION: GeckoView $GV (исправления безопасности движка)"
+          python3 tools/tiho-publish.py verify --pub upd/keys/tiho-content-ci.pub --file upd/app/update-v2.json
+          rm -rf "$K"
+          mkdir in && cp upd/app/update-v2.json upd/app/update-v2.json.minisig in/ && mkdir in/apks && cp "$A64" "$A7" "$X64" in/apks/
+          # GitHub rejects files > 100 MB in git: ship APKs in 45 MB parts, publish-app.yml joins and re-verifies them.
+          (cd in/apks && for f in *.apk; do split -b 45M "$f" "$f.part-" && rm "$f"; done && ls -l)
+          printf '{"version":"%s","version_code":%s,"gecko":"%s","source":"%s"}\n' "$VERSION" "$VC" "$GV" "$(git rev-parse --short HEAD)" > in/meta.json
+          cd upd && git checkout --orphan incoming && git rm -rqf . && cp -r ../in/* . && git add -A
+          git -c user.name="tiho-ci" -c user.email="tiho-ci@users.noreply.github.com" commit -qm "incoming: Тихо $VERSION (GeckoView $GV)"
+          git push -f origin incoming

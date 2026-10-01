@@ -16,8 +16,8 @@ class Prefs(context: Context) {
     private val listeners = mutableListOf<() -> Unit>()
     fun onChange(l: () -> Unit) { listeners += l }
     /** Keys that are statistics, not settings: no reconfiguration on change. */
-    private val silent = setOf("total_blocked", "last_filter_update", "content_status", "content_last_check", "min_webview_pack",
-        "list_pins", "webview_dismissed", "payment_known", "app_update_status", "app_last_check")
+    private val silent = setOf("total_blocked", "content_status", "content_last_check", "payment_known", "app_update_status",
+        "app_last_check", "addon_pins", "addons_paused", "ubo_installed", "update_banner_dismissed", "app_last_ok")
     private fun changed(key: String) { if (key !in silent) listeners.forEach { it() } }
 
     private inner class B(val key: String, def: Boolean) : ReadWriteProperty<Any, Boolean> {
@@ -56,70 +56,56 @@ class Prefs(context: Context) {
     // --- General
     var searchEngine by S("search", "ddg")
     var theme by I("theme", 0) // 0 system, 1 light, 2 dark
-    var javascript by B("js", true)
     var desktopDefault by B("desktop_default", false)
     var flagSecure by B("flag_secure", false)
-    var textZoom by I("text_zoom", 100)
 
     // --- Data / private mode
     var clearOnExit by B("clear_on_exit", true)
-    var clearOnTabClose by B("clear_on_tab_close", true)
     var incognitoDefault by B("incognito_default", false)
-    var cookies by B("cookies", true)
-    var thirdPartyCookies by B("third_party_cookies", false)
 
-    // --- Network privacy
+    // --- Gecko privacy (Arkenfox / IronFox-style prefs)
     var httpsOnly by B("https_only", true)
-    var stripParams by B("strip_params", true)
-    var unwrapRedirects by B("unwrap_redirects", true)
-    var dnt by B("dnt", true)
+    var etpStrict by B("etp_strict", true)
     var gpc by B("gpc", true)
-    var strictReferrer by B("strict_referrer", false)
-    var blockPings by B("block_pings", true)
-    var doh by B("doh", false)
-    var dohProvider by S("doh_provider", "quad9")
-
-    // --- Anti-fingerprinting
-    var antiFp by B("anti_fp", true)
-    var genericUa by B("generic_ua", true)
-    var webrtcMode by I("webrtc", 0) // 0 disabled, 1 relay only (hide IP), 2 allowed
-    var blockWebGl by B("block_webgl", false)
-    var blockSensors by B("block_sensors", true)
-    var spoofTimezone by B("spoof_tz", false)
+    /** 0 = fingerprintingProtection (FPP, Firefox's strict-mode protections), 1 = resistFingerprinting (RFP, Tor-like). */
+    var fpMode by I("fp_mode", 0)
+    var webrtcMode by I("webrtc", 1) // 0 disabled, 1 no IP leak (default address only, no host candidates), 2 allowed
+    /** 0 off, 1 Mozilla TRR (Cloudflare), 2 Quad9, 3 Mullvad, 4 AdGuard */
+    var doh by I("doh_mode", 0)
+    var dohStrict by B("doh_strict", false)
+    var referrerTrim by B("referrer_trim", true)
+    var jitOff by B("jit_off", false)
     var drm by B("drm", false)
-
-    // --- Content
-    var adblock by B("adblock", true)
     var blockPopups by B("block_popups", true)
-    var blockAutoRedirects by B("block_auto_redirects", false)
-    var allowlist by SS("allowlist", emptySet())
-    var enabledLists by SS("lists", DEFAULT_LISTS)
-    var customRules by S("custom_rules", "")
-    var extraListUrls by S("extra_list_urls", "")
-    var lastFilterUpdate by S("last_filter_update", "")
-    var totalBlocked by I("total_blocked", 0)
+    var stripParams by B("strip_params", true)
 
-    // --- Security (1.1.0)
+    // --- Security (payment-safe mode, phishing)
     var phishing by B("phishing", true)
     /** Domains the user confirmed via «Похоже на оплату» (always payment-safe). */
     var paymentUserDomains by SS("payment_user_domains", emptySet())
     /** Union of every payment-domains.json ever accepted from a signed pack (add-only). */
     var paymentKnown by SS("payment_known", emptySet())
-    var paymentThirdPartyCookies by B("payment_3p_cookies", true)
-    var listPins by S("list_pins", "{}")
-    var webviewDismissed by S("webview_dismissed", "")
+
+    // --- Extensions
+    /** JSON: add-on id → {"v": version, "sha": xpi sha256, "src": "bundled|amo|file"} recorded at install time. */
+    var addonPins by S("addon_pins", "{}")
+    /** Add-on ids the user marked «доверять на оплате» (pinned to id + version + sha256 at that moment): JSON id → "v|sha". */
+    var addonPaymentTrust by S("addon_payment_trust", "{}")
+    /** Add-ons the app paused (EnableSource.APP) while a «Банк» tab was open. */
+    var addonsPaused by SS("addons_paused", emptySet())
+    var uboInstalled by B("ubo_installed", false)
 
     // --- Updates (signed content packs + APK)
     var contentAuto by B("content_auto", true)
     var contentWifiOnly by B("content_wifi", true)
-    /** «Только списки, без кода»: never apply JS from content packs. */
-    var contentNoCode by B("content_no_code", false)
     var contentStatus by S("content_status", "")
     var contentLastCheck by S("content_last_check", "")
-    var minWebViewPack by I("min_webview_pack", 0)
     var appUpdateCheck by B("app_update_check", true)
     var appUpdateStatus by S("app_update_status", "")
     var appLastCheck by S("app_last_check", "")
+    /** Epoch ms of the last successful (verified) update.json check. */
+    var appLastOk by S("app_last_ok", "0")
+    var updateBannerDismissed by S("update_banner_dismissed", "")
     var contentHighWater: Long
         get() = sp.getLong("content_high_water", 0L)
         set(v) { sp.edit().putLong("content_high_water", v).apply() }
@@ -137,19 +123,23 @@ class Prefs(context: Context) {
     }
 
     companion object {
-        val DEFAULT_LISTS = setOf(
-            "easylist", "easyprivacy", "ruadlist", "peterlowe", "ublock-filters", "ublock-privacy",
-            "ublock-unbreak", "ublock-quickfixes", "ublock-badware", "adguard-urltracking", "cname-ads", "hagezi-light",
-        )
         val SEARCH_ENGINES = listOf(
             "ddg" to "DuckDuckGo", "brave" to "Brave Search", "startpage" to "Startpage",
             "mojeek" to "Mojeek", "yandex" to "Яндекс", "google" to "Google",
         )
         val DOH_PROVIDERS = listOf(
-            "quad9" to "Quad9 (Швейцария, без логов)",
-            "cloudflare" to "Cloudflare 1.1.1.1",
-            "adguard" to "AdGuard DNS (с блокировкой рекламы)",
-            "mullvad" to "Mullvad DNS",
+            0 to "Выключен (системный DNS)",
+            1 to "Mozilla (Cloudflare)",
+            2 to "Quad9 (Швейцария)",
+            3 to "Mullvad DNS",
+            4 to "AdGuard DNS (с блокировкой рекламы)",
         )
+        fun dohUri(mode: Int): String? = when (mode) {
+            1 -> "https://mozilla.cloudflare-dns.com/dns-query"
+            2 -> "https://dns.quad9.net/dns-query"
+            3 -> "https://dns.mullvad.net/dns-query"
+            4 -> "https://dns.adguard-dns.com/dns-query"
+            else -> null
+        }
     }
 }

@@ -1,0 +1,9 @@
+{
+  "manifest_version": 2,
+  "name": "Тихо: встроенный модуль",
+  "description": "Пользовательские скрипты (GM API) и распознавание страниц оплаты. Встроен в браузер, не обновляется из сети.",
+  "version": "2.0.0",
+  "browser_specific_settings": { "gecko": { "id": "tiho@ivanivorontsov.org" } },
+  "permissions": ["nativeMessaging", "nativeMessagingFromContent", "geckoViewAddons", "<all_urls>"],
+  "background": { "scripts": ["background.js"] }
+}

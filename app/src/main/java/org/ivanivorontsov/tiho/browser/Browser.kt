@@ -1,316 +1,207 @@
 package org.ivanivorontsov.tiho.browser
 
-import android.Manifest
 import android.app.Activity
-import android.app.DownloadManager
 import android.content.ActivityNotFoundException
-import android.content.ContentValues
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.os.Handler
 import android.os.Looper
-import android.provider.MediaStore
-import android.view.View
-import android.webkit.GeolocationPermissions
-import android.webkit.PermissionRequest
-import android.webkit.URLUtil
-import android.webkit.ValueCallback
-import android.webkit.WebChromeClient
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.webkit.ProxyConfig
-import androidx.webkit.ProxyController
-import androidx.webkit.WebViewFeature
-import androidx.webkit.WebViewCompat
-import androidx.webkit.WebViewRenderProcess
 import org.ivanivorontsov.tiho.TihoApp
-import org.ivanivorontsov.tiho.data.DownloadItem
 import org.ivanivorontsov.tiho.ext.UserScript
 import org.ivanivorontsov.tiho.ext.UserScriptPin
-import org.ivanivorontsov.tiho.privacy.Scripts
-import org.ivanivorontsov.tiho.privacy.UrlCleaner
-import org.ivanivorontsov.tiho.security.DownloadPolicy
+import org.ivanivorontsov.tiho.security.Homograph
 import org.ivanivorontsov.tiho.security.SchemePolicy
-import org.ivanivorontsov.tiho.privacy.DataCleaner
-import org.ivanivorontsov.tiho.privacy.DohProxy
-import java.io.ByteArrayOutputStream
-import java.security.SecureRandom
-import java.util.concurrent.ConcurrentHashMap
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoView
+import org.mozilla.geckoview.WebExtension
 import java.util.concurrent.Executors
 
-enum class Screen { Browser, Tabs, Bookmarks, Downloads, Settings, Privacy, Filters, Extensions, About, Updates }
-
-data class UiDialog(
-    val title: String,
-    val text: String,
-    val confirm: String,
-    val dismiss: String = "Отмена",
-    val onConfirm: () -> Unit,
-    val onDismiss: () -> Unit = {},
-)
-
-data class Snack(val text: String, val action: String? = null, val onAction: (() -> Unit)? = null, val id: Long = System.nanoTime())
-
-/** Tab manager + glue between WebView callbacks and the Compose UI. */
+/** Tabs, navigation policy and UI state. Lives as long as the activity. */
 class Browser(val app: TihoApp) {
-    var activity: Activity? = null
-    val main = Handler(Looper.getMainLooper())
-    val io = Executors.newCachedThreadPool()
-    val prefs get() = app.prefs
+    enum class Screen { BROWSER, TABS, SETTINGS, ADDONS, AMO, USERSCRIPTS, BOOKMARKS, DOWNLOADS, UPDATES, SECURITY, ABOUT }
 
-    private val rnd = SecureRandom()
-    /** Random JS-bridge name + token per process: pages can't predict or forge bridge calls. */
-    val bridgeName = "_" + (1..9).map { "abcdefghijklmnopqrstuvwxyz"[rnd.nextInt(26)] }.joinToString("")
-    val token = (1..24).map { "abcdefghijklmnopqrstuvwxyz0123456789"[rnd.nextInt(36)] }.joinToString("")
-    /** Farbling session seed (Brave-style): new every app start, never leaves the device. */
-    val sessionSeed = java.lang.Long.toHexString(rnd.nextLong())
+    val main = Handler(Looper.getMainLooper())
+    private val io = Executors.newSingleThreadExecutor()
+    val prefs get() = app.prefs
+    var activity: Activity? = null
+    var geckoView: GeckoView? = null
+    var requestPermissions: (Array<String>, (Boolean) -> Unit) -> Unit = { _, cb -> cb(false) }
+    var pickFiles: (List<String>, Boolean, (List<Uri>?) -> Unit) -> Unit = { _, _, cb -> cb(null) }
 
     val tabs = mutableStateListOf<Tab>()
     val current = mutableStateOf<Tab?>(null)
-    val screen = mutableStateOf(Screen.Browser)
-    val dialog = mutableStateOf<UiDialog?>(null)
+    val screen = mutableStateOf(Screen.BROWSER)
+    val dialogs = mutableStateListOf<UiDialog>()
     val snack = mutableStateOf<Snack?>(null)
-    val fullscreen = mutableStateOf<View?>(null)
-    private var fullscreenCallback: WebChromeClient.CustomViewCallback? = null
-    val findResult = mutableStateOf("")
-    val httpAllowed: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    /** Hosts the user chose to open despite the phishing interstitial (this session only). */
-    val threatBypass: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    val homographWarned: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    val payHintDismissed: MutableSet<String> = ConcurrentHashMap.newKeySet()
-    private var doh: DohProxy? = null
+    val fullscreen = mutableStateOf(false)
+    val findResult = mutableStateOf<String?>(null)
+    val popup = mutableStateOf<Pair<WebExtension, GeckoSession>?>(null)
 
-    /** System WebView engine state (null major = provider unknown). */
-    data class EngineState(val packageName: String?, val versionName: String?, val major: Int?, val minMajor: Int) {
-        val outdated get() = major != null && major < minMajor
-        val unknown get() = major == null
-    }
-    val engine = mutableStateOf(engineState())
-
-    fun engineState(): EngineState {
-        val p = try { WebViewCompat.getCurrentWebViewPackage(app) } catch (_: Exception) { null }
-        val major = p?.versionName?.substringBefore('.')?.toIntOrNull()
-        return EngineState(p?.packageName, p?.versionName, major, app.contentPacks.minWebViewMajor)
-    }
-
-    // Activity hooks
-    var requestPermissions: ((Array<String>, (Boolean) -> Unit) -> Unit)? = null
-    var launchFileChooser: ((Intent, (Array<Uri>?) -> Unit) -> Unit)? = null
+    val prompts = Prompts(this)
+    val permissions = Permissions(this)
+    val downloads = DownloadCtl(this)
 
     init {
-        app.prefs.onChange { main.post { onSettingsChanged() } }
-        app.extensions.onChanged = { main.post { tabs.forEach { it.installScripts() } } }
-        app.adblock.onReloaded = { main.post { tabs.forEach { it.resetScriptlets() } } }
+        app.browser = this
+        app.addons.onTabRequest = { url -> newTab(url, select = true).session }
+        app.addons.onPopup = { ext, s -> popup.value = ext to s }
+        app.addons.toast = { toast(it) }
     }
 
-    fun newTab(url: String? = null, incognito: Boolean = prefs.incognitoDefault, select: Boolean = true, payment: Boolean = false): Tab {
+    fun show(d: UiDialog) = main.post { dialogs += d }
+    fun dismiss(d: UiDialog) { dialogs.remove(d) }
+
+    fun snack(text: String, action: String? = null, onAction: (() -> Unit)? = null) { main.post { snack.value = Snack(text, action, onAction) } }
+    fun toast(text: String) = main.post { Toast.makeText(app, text, Toast.LENGTH_SHORT).show() }
+
+    // ------------------------------------------------------------------ tabs
+    fun newTab(url: String? = null, incognito: Boolean = prefs.incognitoDefault, payment: Boolean = false, select: Boolean = true): Tab {
         val t = Tab(this, incognito, prefs.desktopDefault, payment)
-        val idx = current.value?.let { tabs.indexOf(it) + 1 } ?: tabs.size
-        tabs.add(idx.coerceIn(0, tabs.size), t)
-        if (select) { current.value = t; screen.value = Screen.Browser; updateWindowSecurity() }
-        if (url != null) open(url, t)
+        tabs += t
+        if (select) select(t)
+        if (url != null) t.load(url)
+        onBankTabsChanged()
         return t
     }
 
-    /** URL or text from outside (intents, typed input): scheme whitelist first. */
-    fun open(input: String, tab: Tab? = null, source: SchemePolicy.Source = SchemePolicy.Source.INTERNAL) {
-        when (val r = SchemePolicy.check(input, source)) {
-            is SchemePolicy.Result.Load -> (tab ?: current.value ?: newTab()).load(r.url)
-            is SchemePolicy.Result.Text -> { if (tab != null && current.value !== tab) select(tab); navigate(r.text) }
-            is SchemePolicy.Result.Blocked -> snack("Заблокировано: ${r.reason}")
-        }
-    }
+    /** window.open / target=_blank: same privacy context as the opener. */
+    fun newTabForPopup(opener: Tab): Tab = newTab(null, opener.incognito, opener.payment, select = true)
 
-    /** Intents (VIEW/SEND/WEB_SEARCH) from other apps: file:, content:, javascript:, data:, intent: are refused. */
-    fun openFromIntent(r: SchemePolicy.Result) {
-        when (r) {
-            is SchemePolicy.Result.Load -> newTab(r.url)
-            is SchemePolicy.Result.Text -> if (r.text.isNotBlank()) { newTab(); navigate(r.text) }
-            is SchemePolicy.Result.Blocked -> { if (tabs.isEmpty()) newTab(); snack("Ссылка из другого приложения заблокирована: ${r.reason}") }
-        }
-    }
-
-    fun select(t: Tab) { current.value = t; screen.value = Screen.Browser; updateWindowSecurity() }
-
-    /**
-     * Opens [url] in a «Безопасный режим оплаты» tab (separate WebView, profile «Банк», nothing of ours injected).
-     * A fresh/empty tab is replaced in place; otherwise a new payment tab opens next to it.
-     */
-    fun openInPaymentTab(from: Tab?, url: String): Boolean {
-        val n = Tab(this, from?.incognito ?: false, from?.desktop?.value ?: false, payment = true)
-        val i = from?.let { tabs.indexOf(it) } ?: -1
-        if (from != null && i >= 0 && (from.isHome || from.url.value.isEmpty())) {
-            tabs[i] = n
-            if (current.value === from) current.value = n
-            try { from.webView.destroy() } catch (_: Exception) {}
-        } else {
-            tabs.add(if (i >= 0) i + 1 else tabs.size, n)
-            current.value = n
-        }
-        screen.value = Screen.Browser
-        n.load(url)
-        updateWindowSecurity()
-        return true
-    }
-
-    /** «Похоже на оплату» → remember the domain and reload the page in safe mode. */
-    fun acceptPayHint(t: Tab) {
-        val h = t.payHint.value ?: return
-        t.payHint.value = null
-        app.payments.remember(h.host)
-        tabs.forEach { it.installScripts() }
-        openInPaymentTab(null, t.url.value.ifEmpty { h.url })
-        closeTabQuiet(t)
-    }
-
-    fun dismissPayHint(t: Tab) { t.payHint.value?.let { payHintDismissed += it.host }; t.payHint.value = null }
-
-    /** Leave payment mode: the page reopens in a normal tab (with Тихо's protections and scripts). */
-    fun exitPaymentMode(t: Tab) {
-        val u = t.url.value
-        val i = tabs.indexOf(t)
-        if (i < 0) return
-        val n = Tab(this, t.incognito, t.desktop.value)
-        tabs[i] = n
-        if (current.value === t) current.value = n
-        t.onClosed()
-        if (u.isNotEmpty()) { n.navigating.value = true; n.webView.loadUrl(u) }
+    fun select(t: Tab) {
+        val gv = geckoView
+        current.value?.let { if (it !== t) it.session.setActive(false) }
+        current.value = t
+        if (gv != null && gv.session !== t.session) { gv.releaseSession(); gv.setSession(t.session) }
+        t.session.setActive(true)
+        screen.value = Screen.BROWSER
         updateWindowSecurity()
     }
 
-    private fun closeTabQuiet(t: Tab) {
-        val i = tabs.indexOf(t); if (i < 0) return
-        tabs.removeAt(i); t.onClosed()
-        if (current.value === t) current.value = tabs.lastOrNull()
+    fun attachView(gv: GeckoView) {
+        geckoView = gv
+        current.value?.let { if (gv.session !== it.session) { gv.releaseSession(); gv.setSession(it.session) } }
     }
 
-    /**
-     * FLAG_SECURE (no screenshots / recents preview) automatically for incognito and payment tabs, plus
-     * setHideOverlayWindows on Android 12+ so other apps' overlays can't cover a payment page (tapjacking).
-     */
-    fun updateWindowSecurity() {
-        val a = activity ?: return
-        val t = current.value
-        val sensitive = t != null && (t.incognito || t.safePayment)
-        if (prefs.flagSecure || sensitive) a.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        else a.window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        if (Build.VERSION.SDK_INT >= 31) try { a.window.setHideOverlayWindows(t != null && t.safePayment) } catch (_: Exception) {}
-    }
+    fun reattach(t: Tab) { if (current.value === t) geckoView?.let { it.releaseSession(); it.setSession(t.session) } }
 
-    private val refreshScripts = Runnable { tabs.forEach { it.installScripts() } }
-    /** GM_setValue changed stored values: re-register userscripts (debounced) so new pages see fresh values. */
-    fun scheduleScriptRefresh() { main.removeCallbacks(refreshScripts); main.postDelayed(refreshScripts, 800) }
-
-    // ------------------------------------------------------------------ hung renderer
-    private val hung = mutableSetOf<Int>()
-    fun onRendererHung(t: Tab, renderer: WebViewRenderProcess?) {
-        if (!hung.add(t.id)) return
-        dialog.value = UiDialog("Страница не отвечает", "${UrlCleaner.site(try { java.net.URI(t.url.value).host } catch (_: Exception) { null }) ?: "Сайт"} завис. Подождать или завершить процесс страницы?",
-            "Завершить", dismiss = "Подождать",
-            onConfirm = { hung.remove(t.id); if (renderer?.terminate() != true) recoverCrashedTab(t) },
-            onDismiss = { hung.remove(t.id) })
-    }
-    fun onRendererResponsive(t: Tab) { if (hung.remove(t.id)) dialog.value = null }
+    fun attachTihoExt(ext: WebExtension) { tabs.forEach { it.attachTihoExt(ext) } }
 
     fun closeTab(t: Tab) {
         val i = tabs.indexOf(t)
         if (i < 0) return
+        if (current.value === t) geckoView?.releaseSession()
         tabs.removeAt(i)
-        t.onClosed()
-        if (t.incognito && tabs.none { it.incognito }) DataCleaner.clearIncognito()
-        if (t.payment && tabs.none { it.payment } && prefs.clearOnTabClose) DataCleaner.clearBank()
-        if (current.value === t) current.value = tabs.getOrNull(i.coerceAtMost(tabs.size - 1))
-        if (tabs.isEmpty()) newTab()
-        updateWindowSecurity()
-    }
-
-    fun closeAll(incognitoOnly: Boolean = false) {
-        tabs.filter { !incognitoOnly || it.incognito }.forEach { closeTab(it) }
-    }
-
-    fun recoverCrashedTab(t: Tab) {
-        val u = t.url.value
-        val i = tabs.indexOf(t)
-        if (i < 0) return
-        val n = Tab(this, t.incognito, t.desktop.value, t.payment)
-        tabs[i] = n
-        if (current.value === t) current.value = n
-        try { t.webView.destroy() } catch (_: Exception) {}
-        if (u.isNotEmpty()) n.load(u)
-        snack("Страница была перезагружена после сбоя")
-    }
-
-    /** Address bar input → URL or search (javascript:, file:, content:, data: are never executed/opened). */
-    fun navigate(input: String) {
-        val t = current.value ?: newTab()
-        val s = input.trim()
-        if (s.isEmpty()) return
-        val url = when (val r = SchemePolicy.check(s, SchemePolicy.Source.TYPED)) {
-            is SchemePolicy.Result.Load -> r.url
-            is SchemePolicy.Result.Blocked -> { snack("Заблокировано: ${r.reason}"); return }
-            is SchemePolicy.Result.Text -> if (!r.text.contains(' ') && Regex("^[\\p{L}0-9-]+(\\.[\\p{L}0-9-]+)+(:\\d+)?(/.*)?$").matches(r.text)) "https://${r.text}" else prefs.searchUrl(r.text)
+        t.close()
+        if (t.incognito && tabs.none { it.incognito }) app.engine.runtime.storageController.clearData(org.mozilla.geckoview.StorageController.ClearFlags.ALL_CACHES)
+        if (current.value === t) {
+            if (tabs.isEmpty()) newTab() else select(tabs[minOf(i, tabs.size - 1)])
         }
-        t.load(url)
+        onBankTabsChanged()
     }
 
-    fun goHome() {
-        val t = current.value ?: return
-        t.webView.stopLoading()
-        t.webView.loadUrl("about:blank")
-        t.webView.clearHistory()
-        t.url.value = ""; t.title.value = ""; t.warning.value = null; t.blocked.intValue = 0; t.navigating.value = false
-        t.paymentContext.value = false; t.payHint.value = null; t.homograph.value = null
+    fun closeAll() { tabs.toList().forEach { it.close() }; geckoView?.releaseSession(); tabs.clear(); current.value = null; newTab(); onBankTabsChanged() }
+
+    private var bankOpen = false
+    private fun onBankTabsChanged() {
+        val open = tabs.any { it.payment }
+        if (open != bankOpen) { bankOpen = open; app.addons.onBankTabs(open) }
         updateWindowSecurity()
     }
 
-    fun onSettingsChanged() {
-        tabs.forEach { it.configure(); it.installScripts() }
-        applyDoh()
-        updateWindowSecurity()
-        engine.value = engineState()
-        org.ivanivorontsov.tiho.update.UpdateJob.schedule(app, prefs.contentAuto, prefs.contentWifiOnly)
-    }
+    fun onTabStateChanged(t: Tab) { if (t === current.value) updateWindowSecurity() }
 
-    /** DNS-over-HTTPS: local proxy + WebView ProxyController override. */
-    fun applyDoh() {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) return
-        val want = prefs.doh
-        if (want && doh == null) {
-            val p = DohProxy(DohProxy.endpointFor(prefs.dohProvider)) {
-                buildList { if (prefs.dnt) add("DNT: 1"); if (prefs.gpc) add("Sec-GPC: 1") }
+    // ------------------------------------------------------------------ navigation
+    fun navigate(input: String, tab: Tab? = current.value) {
+        when (val r = SchemePolicy.check(input, SchemePolicy.Source.TYPED)) {
+            is SchemePolicy.Result.Load -> open(r.url, tab)
+            is SchemePolicy.Result.Text -> {
+                val t = r.text
+                if (t.isEmpty()) return
+                val looksLikeHost = !t.contains(' ') && Regex("^[\\p{L}0-9.-]+\\.[\\p{L}]{2,}(:\\d+)?(/.*)?$").matches(t)
+                open(if (looksLikeHost) "https://$t" else prefs.searchUrl(t), tab)
             }
-            io.execute {
-                val port = p.start()
-                main.post {
-                    doh = p
-                    ProxyController.getInstance().setProxyOverride(
-                        ProxyConfig.Builder().addProxyRule("127.0.0.1:$port").build(), { it.run() }, {})
-                }
-            }
-        } else if (!want && doh != null) {
-            ProxyController.getInstance().clearProxyOverride({ it.run() }, {})
-            doh?.stop(); doh = null
+            is SchemePolicy.Result.Blocked -> snack(r.reason)
         }
     }
 
-    fun restartDoh() { if (doh != null) { ProxyController.getInstance().clearProxyOverride({ it.run() }, {}); doh?.stop(); doh = null }; applyDoh() }
-
-    fun snack(text: String, action: String? = null, onAction: (() -> Unit)? = null) {
-        main.post { snack.value = Snack(text, action, onAction) }
+    /** Direct navigations (typed, bookmarks, links from other apps) to a payment site open in a «Банк» tab. */
+    fun open(url: String, tab: Tab? = current.value) {
+        val host = try { Uri.parse(url).host } catch (_: Exception) { null }
+        val pay = host != null && app.payments.isPayment(host)
+        when {
+            pay && tab?.payment != true -> {
+                app.engine.learnPaymentHost(host)
+                val t = if (tab != null && tab.isHome && !tab.incognito) { closeTabQuiet(tab); null } else null
+                app.engine.afterPrefsApplied { newTab(url, incognito = false, payment = true) }
+                if (t == null && tab?.isHome != true) snack("Сайт оплаты открыт в защищённой вкладке «Банк»")
+            }
+            tab == null -> newTab(url)
+            else -> { app.engine.learnPaymentHost(host); app.engine.afterPrefsApplied { tab.load(url) } }
+        }
     }
 
-    fun toast(text: String) = main.post { Toast.makeText(app, text, Toast.LENGTH_SHORT).show() }
+    private fun closeTabQuiet(t: Tab) {
+        val i = tabs.indexOf(t); if (i < 0) return
+        if (current.value === t) geckoView?.releaseSession()
+        tabs.removeAt(i); t.close()
+        if (current.value === t) current.value = null
+    }
 
-    // ------------------------------------------------------------------ external apps
-    /**
-     * intent:// and other app links from pages: sanitized (no explicit component/selector, BROWSABLE only, no URI
-     * permission grants) and confirmed by the user, who sees which app will open.
-     */
-    fun openExternal(tab: Tab, url: String) {
+    /** «Открыть в защищённой вкладке» from the menu: any site can be opened in a «Банк» tab. */
+    fun openInPaymentTab(url: String) {
+        app.engine.learnPaymentHost(try { Uri.parse(url).host } catch (_: Exception) { null })
+        app.engine.afterPrefsApplied { newTab(url, incognito = false, payment = true) }
+    }
+
+    fun acceptPayHint(t: Tab) {
+        val h = t.payHint.value ?: return
+        app.payments.remember(h.host)
+        app.engine.learnPaymentHost(h.host)
+        t.payHint.value = null
+        app.engine.afterPrefsApplied { newTab(h.url, incognito = false, payment = true) }
+    }
+
+    fun openFromIntent(r: SchemePolicy.Result) {
+        when (r) {
+            is SchemePolicy.Result.Load -> open(r.url, null)
+            is SchemePolicy.Result.Text -> if (r.text.isNotBlank()) { newTab(); navigate(r.text) }
+            is SchemePolicy.Result.Blocked -> snack("Ссылка из другого приложения заблокирована: ${r.reason}")
+        }
+    }
+
+    fun goHome() { current.value?.let { it.load("about:blank"); it.url.value = "" } }
+
+    /** Back: closes overlays first, then history, then the tab (if opened as a popup). */
+    fun back(): Boolean {
+        if (popup.value != null) { closePopup(); return true }
+        if (screen.value != Screen.BROWSER) { screen.value = if (screen.value == Screen.AMO) Screen.ADDONS else Screen.BROWSER; return true }
+        if (fullscreen.value) { current.value?.session?.exitFullScreen(); return true }
+        val t = current.value ?: return false
+        if (t.warning.value != null) { t.warning.value = null; return true }
+        if (t.canBack.value) { t.goBack(); return true }
+        if (!t.isHome) { goHome(); return true }
+        return false
+    }
+
+    fun closePopup() { popup.value?.second?.close(); popup.value = null }
+
+    // ------------------------------------------------------------------ external schemes / userscripts / context menu
+    fun onExternalScheme(tab: Tab, url: String, gesture: Boolean) {
+        val scheme = SchemePolicy.schemeOf(url) ?: return
+        if (scheme in SchemePolicy.ALWAYS_BLOCKED) { snack("Заблокировано: ссылка $scheme: из страницы"); return }
+        if (!gesture && scheme == "intent") { snack("Страница пыталась открыть приложение без нажатия — заблокировано"); return }
+        main.post { openExternal(tab, url) }
+    }
+
+    private fun openExternal(tab: Tab, url: String) {
         val intent = try {
             if (url.startsWith("intent:")) Intent.parseUri(url, Intent.URI_INTENT_SCHEME) else Intent(Intent.ACTION_VIEW, Uri.parse(url))
         } catch (_: Exception) { return }
@@ -326,224 +217,110 @@ class Browser(val app: TihoApp) {
         val appName = try {
             pm.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.let { ai ->
                 if (ai.packageName == "android") null else "${ai.applicationInfo.loadLabel(pm)} (${ai.packageName})"
-            } ?: intent.`package`?.let { p -> try { "${pm.getApplicationInfo(p, 0).loadLabel(pm)} ($p)" } catch (_: Exception) { "$p (не установлено)" } }
+            }
         } catch (_: Exception) { null }
-        val site = try { java.net.URI(tab.url.value).host } catch (_: Exception) { null } ?: "Сайт"
-        dialog.value = UiDialog(
-            "Открыть внешнее приложение?",
-            "$site хочет открыть " + (appName?.let { "приложение «$it»" } ?: "другое приложение") + ".\n\nСсылка: ${url.take(120)}",
-            "Открыть",
-            onConfirm = {
-                try { activity?.startActivity(intent) } catch (_: ActivityNotFoundException) {
-                    if (fallback != null && fallback.startsWith("https://")) tab.load(fallback)
-                    else toast("Нет приложения для этой ссылки")
-                }
-            },
-        )
-    }
-
-    // ------------------------------------------------------------------ permissions
-    private fun topSite(tab: Tab) = UrlCleaner.site(try { java.net.URI(tab.url.value).host } catch (_: Exception) { null })
-
-    fun onPermissionRequest(tab: Tab, req: PermissionRequest) {
-        main.post {
-            // Requests from third-party iframes are denied by default; the user always sees the top origin.
-            val reqSite = UrlCleaner.site(req.origin.host)
-            val top = topSite(tab)
-            if (top != null && reqSite != top) {
-                req.deny()
-                snack("Отклонён запрос камеры/микрофона от встроенного сайта ${req.origin.host} (страница: $top)")
-                return@post
-            }
-            val wanted = req.resources.filter {
-                it == PermissionRequest.RESOURCE_VIDEO_CAPTURE || it == PermissionRequest.RESOURCE_AUDIO_CAPTURE ||
-                    (it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID && prefs.drm)
-            }
-            if (wanted.isEmpty()) { req.deny(); return@post }
-            val names = wanted.joinToString(", ") {
-                when (it) { PermissionRequest.RESOURCE_VIDEO_CAPTURE -> "камера"; PermissionRequest.RESOURCE_AUDIO_CAPTURE -> "микрофон"; else -> "защищённое видео (DRM)" }
-            }
-            dialog.value = UiDialog("Доступ для ${req.origin.host}", "Сайт ${req.origin.scheme}://${req.origin.host} запрашивает: $names. Разрешение действует только для этой страницы.", "Разрешить",
-                onConfirm = {
-                    val perms = buildList {
-                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE in wanted) add(Manifest.permission.CAMERA)
-                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE in wanted) add(Manifest.permission.RECORD_AUDIO)
-                    }.toTypedArray()
-                    if (perms.isEmpty()) req.grant(wanted.toTypedArray())
-                    else requestPermissions?.invoke(perms) { ok -> if (ok) req.grant(wanted.toTypedArray()) else req.deny() } ?: req.deny()
-                },
-                onDismiss = { req.deny() })
-        }
-    }
-
-    fun onGeolocation(tab: Tab, origin: String, cb: GeolocationPermissions.Callback) {
-        main.post {
-            val reqSite = UrlCleaner.site(try { java.net.URI(origin).host } catch (_: Exception) { null })
-            val top = topSite(tab)
-            if (top != null && reqSite != top) {
-                cb.invoke(origin, false, false)
-                snack("Отклонён запрос геолокации от встроенного сайта $origin (страница: $top)")
-                return@post
-            }
-            dialog.value = UiDialog("Геолокация", "Сайт $origin запрашивает ваше местоположение.", "Разрешить один раз",
-                onConfirm = {
-                    requestPermissions?.invoke(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)) { ok ->
-                        cb.invoke(origin, ok, false)
-                    } ?: cb.invoke(origin, false, false)
-                },
-                onDismiss = { cb.invoke(origin, false, false) })
-        }
-    }
-
-    fun showFileChooser(cb: ValueCallback<Array<Uri>>, params: WebChromeClient.FileChooserParams): Boolean {
-        val l = launchFileChooser ?: return false
-        val intent = try { params.createIntent() } catch (_: Exception) { return false }
-        l(intent) { cb.onReceiveValue(it) }
-        return true
-    }
-
-    fun enterFullscreen(view: View, cb: WebChromeClient.CustomViewCallback) {
-        if (fullscreen.value != null) { cb.onCustomViewHidden(); return }
-        fullscreenCallback = cb
-        fullscreen.value = view
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR
-    }
-
-    fun exitFullscreen() {
-        fullscreen.value = null
-        fullscreenCallback?.onCustomViewHidden(); fullscreenCallback = null
-        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-    }
-
-    // ------------------------------------------------------------------ userscripts from the web
-    /** HTTPS only; the script and its @require files are downloaded first and their SHA-256 shown before install. */
-    fun offerUserscript(url: String, expectedSha256: String? = null) {
-        try { UserScriptPin.requireHttps(url) } catch (e: SecurityException) { toast(e.message ?: "Только HTTPS"); return }
-        io.execute {
-            try {
-                val s = app.extensions.download(url, expectedSha256)
-                main.post { confirmInstall(s) }
-            } catch (e: Exception) { toast("Не удалось загрузить скрипт: ${e.message}") }
-        }
-    }
-
-    fun confirmInstall(s: UserScript) {
-        val old = app.extensions.find(s.id)
-        val change = UserScriptPin.compare(old, s)
-        if (change is UserScriptPin.Change.Same) { toast("«${s.name}» уже установлен, код не изменился"); return }
-        val where = (s.matches + s.includes).take(5).joinToString("\n").ifBlank { "(нигде)" }
-        val req = if (s.requireHashes.isEmpty()) "" else "\n\n@require:\n" + s.requireHashes.entries.joinToString("\n") { "${it.key.take(60)}\nSHA-256 ${UserScriptPin.pretty(it.value).take(39)}…" }
-        val title: String
-        val head: String
-        if (change is UserScriptPin.Change.Modified) {
-            title = "Скрипт изменился — подтвердите"
-            head = "«${s.name}» ${old?.version} → ${s.version}\nБыло SHA-256: ${UserScriptPin.pretty(change.oldHash)}\nСтало SHA-256: ${UserScriptPin.pretty(change.newHash)}" +
-                (if (change.requiresChanged.isNotEmpty()) "\nИзменились @require: ${change.requiresChanged.size}" else "") +
-                (if (old?.trustedPayment == true) "\n\nДоверие «на оплате» будет снято." else "")
-        } else {
-            title = "Установить userscript?"
-            head = "«${s.name}» ${s.version}\n${s.description}\n\nSHA-256: ${UserScriptPin.pretty(s.sha256)}"
-        }
-        dialog.value = UiDialog(title, "$head\n\nИсточник: ${s.sourceUrl}\nБудет работать на:\n$where$req\n\nНа страницах банков и оплаты скрипты не запускаются. Устанавливайте только скрипты, которым доверяете.",
-            if (change is UserScriptPin.Change.Modified) "Принять изменения" else "Установить",
-            onConfirm = { io.execute { app.extensions.install(s); toast("Установлено: ${s.name}") } })
-    }
-
-    // ------------------------------------------------------------------ downloads
-    fun onDownload(tab: Tab, url: String, ua: String?, cd: String?, mime: String?, len: Long) {
-        val name = URLUtil.guessFileName(url, cd, mime)
-        val size = if (len > 0) " (%.1f МБ)".format(len / 1048576.0) else ""
-        val risk = DownloadPolicy.assess(name, url, mime)
-        if (tab.payment && url.startsWith("blob:")) { toast("В режиме оплаты загрузка blob: недоступна (нет моста скриптов)"); return }
-        val from = try { java.net.URI(tab.url.value).host } catch (_: Exception) { null } ?: "страница"
-        dialog.value = UiDialog(
-            if (risk.dangerous) "Опасный файл" else if (risk.insecure) "Незащищённая загрузка" else "Скачать файл?",
-            "$name$size\nИсточник: $from" + if (risk.any) "\n\n" + DownloadPolicy.warningText(risk) else "",
-            if (risk.any) "Всё равно скачать" else "Скачать", onConfirm = {
-            when {
-                url.startsWith("blob:") -> {
-                    val id = "b" + System.nanoTime()
-                    blobNames[id] = name
-                    tab.webView.evaluateJavascript(blobScript(url, id, name, mime ?: "application/octet-stream"), null)
-                }
-                url.startsWith("data:") -> io.execute {
-                    val comma = url.indexOf(',')
-                    val meta = url.substring(5, comma)
-                    val bytes = if (meta.endsWith(";base64")) android.util.Base64.decode(url.substring(comma + 1), 0) else Uri.decode(url.substring(comma + 1)).toByteArray()
-                    main.post { saveBytes(name, meta.substringBefore(';').ifBlank { "application/octet-stream" }, bytes, "data:") }
-                }
-                else -> enqueue(tab, url, ua, name, mime)
+        val site = try { Homograph.display(Uri.parse(tab.url.value).host) } catch (_: Exception) { null } ?: "Сайт"
+        show(UiDialog.Message("Открыть внешнее приложение?",
+            "$site хочет открыть " + (appName?.let { "приложение «$it»" } ?: "другое приложение") + ".\n\nСсылка: ${url.take(120)}", "Открыть", "Отмена") { ok ->
+            if (!ok) return@Message
+            try { activity?.startActivity(intent) } catch (_: ActivityNotFoundException) {
+                if (fallback != null && fallback.startsWith("https://")) tab.load(fallback) else toast("Нет приложения для этой ссылки")
             }
         })
     }
 
-    private fun enqueue(tab: Tab, url: String, ua: String?, name: String, mime: String?) {
+    fun offerUserscript(url: String) {
+        if (!url.startsWith("https://")) { snack("Пользовательские скрипты устанавливаются только по HTTPS"); return }
+        snack("Загрузка скрипта…")
+        io.execute {
+            try {
+                val s = app.extensions.download(url)
+                main.post { confirmUserscript(s) }
+            } catch (e: Exception) { snack("Скрипт не установлен: ${e.message}") }
+        }
+    }
+
+    fun confirmUserscript(s: UserScript) {
+        val old = app.extensions.find(s.id)
+        val change = UserScriptPin.compare(old, s)
+        val text = buildString {
+            append("${s.name} ${s.version}\n${s.description}\n\nИсточник: ${s.sourceUrl}\nSHA-256: ${UserScriptPin.pretty(s.sha256)}")
+            if (s.requires.isNotEmpty()) append("\n@require: ${s.requires.size} (хэши закреплены)")
+            if (change is UserScriptPin.Change.Modified) append("\n\nВНИМАНИЕ: код изменился по сравнению с установленным.")
+            append("\n\nСкрипт не работает на страницах оплаты, пока вы явно не доверите ему эту версию.")
+        }
+        show(UiDialog.Message("Установить пользовательский скрипт?", text, "Установить", "Отмена") { ok ->
+            if (ok) { app.extensions.install(s); app.addons.pushConfig(); toast("Скрипт установлен") }
+        })
+    }
+
+    fun contextMenu(tab: Tab, e: GeckoSession.ContentDelegate.ContextElement) {
+        val link = e.linkUri; val src = e.srcUri
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        if (link != null) {
+            items += "Открыть в новой вкладке" to { open(link, null) }
+            items += "Открыть в приватной вкладке" to { newTab(link, incognito = true) }
+            items += "Копировать ссылку" to { copy(link) }
+            items += "Поделиться ссылкой" to { share(link) }
+        }
+        if (src != null) {
+            items += "Открыть изображение / медиа" to { newTab(src) }
+            items += "Копировать адрес" to { copy(src) }
+        }
+        if (items.isEmpty()) return
+        show(UiDialog.Menu(Homograph.display(try { Uri.parse(link ?: src).host } catch (_: Exception) { null }).ifEmpty { "Ссылка" }, items))
+    }
+
+    fun copy(text: String) {
+        (app.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("url", text))
+        toast("Скопировано")
+    }
+
+    fun share(text: String) {
+        activity?.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Поделиться"))
+    }
+
+    fun openDownload(name: String, uri: String?, mime: String?) {
+        if (uri == null) { toast("Файл сохранён в папку загрузок приложения"); return }
         try {
-            val r = DownloadManager.Request(Uri.parse(url))
-            tab.cookieManager().getCookie(url)?.let { r.addRequestHeader("Cookie", it) }
-            r.addRequestHeader("User-Agent", tab.webView.settings.userAgentString ?: ua ?: "")
-            if (prefs.dnt) r.addRequestHeader("DNT", "1")
-            r.setMimeType(mime)
-            r.setTitle(name)
-            r.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            r.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
-            val dm = app.getSystemService(DownloadManager::class.java)
-            val id = dm.enqueue(r)
-            app.downloads.add(DownloadItem(id, name, url, System.currentTimeMillis()))
-            snack("Загрузка начата: $name", "Загрузки") { screen.value = Screen.Downloads }
-        } catch (e: Exception) { toast("Ошибка загрузки: ${e.message}") }
+            activity?.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(uri), mime?.substringBefore(';') ?: "*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        } catch (_: Exception) { toast("Нет приложения для открытия $name") }
     }
 
-    private val blobParts = ConcurrentHashMap<String, ByteArrayOutputStream>()
-    private val blobNames = ConcurrentHashMap<String, String>()
+    // ------------------------------------------------------------------ find in page
+    fun find(text: String, backwards: Boolean = false) {
+        val t = current.value ?: return
+        if (text.isEmpty()) { t.session.finder.clear(); findResult.value = null; return }
+        t.session.finder.find(text, if (backwards) GeckoSession.FINDER_FIND_BACKWARDS else 0).accept({ r ->
+            findResult.value = if (r == null || !r.found) "нет совпадений" else "${r.current}/${r.total}"
+        }, { })
+    }
+    fun clearFind() { current.value?.session?.finder?.clear(); findResult.value = null }
 
-    fun blobChunk(id: String, b64: String) {
-        blobParts.getOrPut(id) { ByteArrayOutputStream() }.write(android.util.Base64.decode(b64, 0))
+    // ------------------------------------------------------------------ payment-safe window
+    /**
+     * «Банк» tabs and payment hosts: FLAG_SECURE (no screenshots / screen recording / recents preview), other apps'
+     * overlays hidden (Android 12+), and touches are ignored while the window is obscured (tapjacking).
+     */
+    fun updateWindowSecurity() {
+        val a = activity ?: return
+        val safe = current.value?.safePayment == true
+        if (safe || prefs.flagSecure) a.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else a.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if (Build.VERSION.SDK_INT >= 31) a.window.setHideOverlayWindows(safe)
+        geckoView?.filterTouchesWhenObscured = safe
     }
 
-    fun blobEnd(id: String, name: String, mime: String) {
-        val bytes = blobParts.remove(id)?.toByteArray() ?: return
-        saveBytes(blobNames.remove(id) ?: name, mime, bytes, "blob:")
+    // ------------------------------------------------------------------ data
+    fun clearNow(done: () -> Unit = {}) {
+        app.engine.clearAllData { app.markClean(); main.post { toast("Данные сайтов удалены"); done() } }
     }
 
-    private fun blobScript(url: String, id: String, name: String, mime: String) = """
-        (function(){${Scripts.rpc(bridgeName, token)}
-        if(!TB)return;fetch(${org.json.JSONObject.quote(url)}).then(r=>r.blob()).then(async b=>{
-          const buf=new Uint8Array(await b.arrayBuffer());const CH=393216;
-          for(let i=0;i<buf.length;i+=CH){let s='';const part=buf.subarray(i,i+CH);for(let j=0;j<part.length;j++)s+=String.fromCharCode(part[j]);TB.send('bc',{id:'$id',b64:btoa(s)});}
-          TB.send('be',{id:'$id',name:${org.json.JSONObject.quote(name)},mime:b.type||'$mime'});}).catch(e=>console.error(e));})();
-    """.trimIndent()
-
-    private fun saveBytes(name: String, mime: String, bytes: ByteArray, src: String) {
-        try {
-            val uri: Uri = if (Build.VERSION.SDK_INT >= 29) {
-                val cv = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, name); put(MediaStore.Downloads.MIME_TYPE, mime)
-                }
-                val u = app.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv)!!
-                app.contentResolver.openOutputStream(u)!!.use { it.write(bytes) }
-                u
-            } else {
-                val f = java.io.File(app.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), name)
-                f.writeBytes(bytes); Uri.fromFile(f)
-            }
-            app.downloads.add(DownloadItem(-1, name, src, System.currentTimeMillis(), uri.toString()))
-            snack("Сохранено: $name", "Загрузки") { screen.value = Screen.Downloads }
-        } catch (e: Exception) { toast("Не удалось сохранить: ${e.message}") }
-    }
-
-    // ------------------------------------------------------------------ exit
-    /** «Выход»: closes all tabs and (if enabled) wipes all browsing data. */
-    fun exit(onDone: () -> Unit) {
-        val wv = current.value?.webView
-        val wipe = prefs.clearOnExit
-        tabs.toList().forEach { t -> tabs.remove(t); if (t.webView !== wv) try { t.webView.destroy() } catch (_: Exception) {} }
-        current.value = null
-        if (wipe) DataCleaner.clearAll(app, wv) { main.post { try { wv?.destroy() } catch (_: Exception) {}; onDone() } }
-        else { try { wv?.destroy() } catch (_: Exception) {}; onDone() }
-    }
-
-    fun clearNow() {
-        DataCleaner.clearAll(app, current.value?.webView) { toast("Все данные сайтов удалены") }
+    /** «Выход»: closes every tab and (private mode) wipes cookies, storage, cache, permissions. */
+    fun exit(done: () -> Unit) {
+        geckoView?.releaseSession()
+        tabs.toList().forEach { it.close() }
+        tabs.clear(); current.value = null
+        if (bankOpen) { bankOpen = false; app.addons.onBankTabs(false) }
+        if (prefs.clearOnExit) app.engine.clearAllData { app.markClean(); main.post(done) } else done()
     }
 }
