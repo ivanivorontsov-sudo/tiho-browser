@@ -120,7 +120,7 @@ private fun TopBar(b: Browser, tab: Tab) {
         when {
             tab.payment -> AssistChip(onClick = { b.screen.value = Screen.SECURITY }, label = { Text("Банк") }, leadingIcon = { Icon(Icons.Filled.CreditCard, null) })
             tab.incognito -> Icon(Icons.Outlined.VisibilityOff, "Приватная вкладка", Modifier.padding(6.dp))
-            else -> Icon(if (tab.secure.value || tab.isHome) Icons.Filled.Lock else Icons.Outlined.LockOpen, if (tab.secure.value) "Защищённое соединение" else "Нет шифрования",
+            else -> Icon(if (tab.secure.value || tab.isHome) Icons.Filled.Lock else Icons.Outlined.LockOpen, if (tab.isHome) "Домашняя страница" else if (tab.secure.value) "Защищённое соединение" else "Нет шифрования",
                 Modifier.padding(6.dp), tint = if (tab.secure.value || tab.isHome) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
         }
         OutlinedTextField(

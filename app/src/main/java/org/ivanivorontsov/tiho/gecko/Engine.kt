@@ -29,7 +29,10 @@ class Engine(private val app: TihoApp) {
     fun start() {
         learnedHosts += prefs.sp.getStringSet("payment_hosts_learned", emptySet()).orEmpty()
         val cfg = File(app.filesDir, "gecko-config.yaml")
-        cfg.writeText(GeckoPrefs.yaml(GeckoPrefs.static() + GeckoPrefs.dynamic(config())))
+        // Android emulators without GPU acceleration: the GPU process times out and the compositor stalls; render in-process.
+        val emu = android.os.Build.HARDWARE.let { it == "ranchu" || it == "goldfish" }
+        val extra: Map<String, Any> = if (emu) mapOf("layers.gpu-process.enabled" to false, "gfx.webrender.software" to true) else emptyMap()
+        cfg.writeText(GeckoPrefs.yaml(GeckoPrefs.static() + GeckoPrefs.dynamic(config()) + extra))
         val b = GeckoRuntimeSettings.Builder()
             .configFilePath(cfg.absolutePath)
             .locales(arrayOf("ru-RU", "ru", "en-US"))
