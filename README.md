@@ -1,152 +1,133 @@
-# Тихо — лёгкий приватный браузер для Android
+# Тихо — приватный браузер для Android на GeckoView
 
-Kotlin + Jetpack Compose (Material 3) поверх Android System WebView. Блокировщик рекламы — **Brave adblock-rust** (Rust, JNI через cargo-ndk)
-со списками EasyList, EasyPrivacy, RU AdList, uBlock filters/privacy/unbreak/quick-fixes/badware, Peter Lowe, HaGeZi Multi Light, AdGuard URL Tracking и AdGuard CNAME (CNAME-клоакинг),
-плюс скриптлеты и redirect-ресурсы uBlock Origin. Без аналитики, телеметрии, Google Play Services и аккаунтов.
+Kotlin + Jetpack Compose (Material 3), интерфейс на русском. С версии 2.0 движок — **Mozilla GeckoView**: готовый AAR
+с maven.mozilla.org, сам Gecko не компилируется (версия в `gecko.properties`). Есть настоящие **WebExtensions** с addons.mozilla.org.
+Блокировщик по умолчанию — **uBlock Origin**, предустановлен подписанный AMO-xpi. Без аналитики, телеметрии, Google Play Services и аккаунтов.
 
-* Пакет: `org.ivanivorontsov.tiho`, minSdk 26, target 35, ABI arm64-v8a + armeabi-v7a, R8.
-* Сборка: `.github/workflows/build.yml` — Rust-тесты, JNI-библиотеки, JVM unit-тесты, подписанный APK, GitHub Release.
+* Пакет `org.ivanivorontsov.tiho`, minSdk 26, compileSdk 37.1, R8. Подпись — ключ `privbrowser`, сертификат `F1:72:85:…:D6:D0`.
+  Тот же ключ, что у 1.x, поэтому 2.0 ставится поверх 1.1.x.
+* ABI: отдельные APK для **arm64-v8a** и **armeabi-v7a** (~95 МБ: библиотеки Gecko), плюс x86_64 для эмулятора. Публикуются через GitHub Release.
+* 1.x (System WebView + adblock-rust) лежит в ветке/тегах `v1.1.x`. adblock-rust удалён: его заменил uBlock Origin внутри Gecko.
 
-## Возможности
+## Возможности 2.0
 
-**Браузер:** вкладки и инкогнито-вкладки (отдельный профиль WebView), закладки, загрузки (включая blob:/data:), поиск на странице,
-версия для ПК, тёмная тема (системная/светлая/тёмная, Material You), «Поделиться» (с очищенной ссылкой), открытие ссылок из других приложений,
-полноэкранное видео, выбор файлов, разрешения камеры/микрофона/геолокации только по запросу.
+**Браузер:** вкладки, приватные вкладки (приватная сессия Gecko), вкладка «Банк», закладки, загрузки, поиск на странице,
+версия для ПК, тема, «Поделиться» (ссылка очищается от трекинговых параметров), ссылки из других приложений, полноэкранное видео,
+выбор файлов, разрешения сайтов по запросу (сторонним iframe — отказ).
 
-**Блокировка:** adblock-rust (сетевые правила, $removeparam, redirect-ресурсы, косметика: CSS, generic hide, процедурные фильтры,
-скриптлеты uBO, в том числе YouTube), счётчик на щите и общая статистика, исключения по сайтам, свои правила, дополнительные списки,
-обновление списков по кнопке (без фоновых запросов), блокировка всплывающих окон и авто-переадресаций.
+**WebExtensions:** раздел «Дополнения». Можно установить дополнение из встроенного каталога AMO (API addons.mozilla.org) или со страницы
+addons.mozilla.org. Есть включение/выключение, удаление, «работать в приватных вкладках», доступ к сайтам (необязательные host-разрешения), страница настроек дополнения,
+всплывающее окно (browser action) в меню. При установке:
+- xpi скачивается только по HTTPS с AMO;
+- SHA-256 файла сверяется с хэшем из AMO API и закрепляется (id + версия + SHA-256);
+- подпись Mozilla проверяет сам Gecko.
 
-**Приватность:** стирание всех данных при выходе и при старте после убийства процесса; очистка данных сайта при закрытии вкладки;
-сторонние cookies выключены; HTTPS-only с предупреждением; удаление трекинговых параметров (~150 + per-site) и разворачивание
-редиректов/AMP; блокировка `<a ping>` и `sendBeacon`; GPC + DNT; строгий Referer (опция); сброс `window.name` между сайтами;
-WebRTC выключен / только relay; урезанный User-Agent («Android 10; K») и урезанные Client Hints; защита от отпечатков
-(шум Canvas/Audio/WebGL/measureText/ClientRects по сессионному ключу и сайту, как farbling в Brave), подмена
-hardwareConcurrency/deviceMemory/платформы/сети, удаление Battery/Gamepad/WebGPU/IdleDetection/Keyboard/InstalledRelatedApps/датчиков;
-опционально: UTC как в Tor Browser, отключение WebGL, DNS-over-HTTPS (локальный прокси), FLAG_SECURE.
-WebView: `MetricsOptOut`, `EnableSafeBrowsing=false`, пустой allowlist для `X-Requested-With`, запрет file/content-доступа.
+Автообновления дополнений выключены, обновление — кнопкой «Проверить обновление». uBlock Origin 1.75.0 встроен в APK
+(`assets/extensions/ublock_origin.xpi`, подписан AMO) и ставится при первом запуске. RU AdList включён: uBO выбирает региональный список
+по языку системы, это проверено в панели uBO. Данные uBO (списки, настройки) не стираются при очистке данных сайтов на выходе:
+`StorageController.clearData` не трогает хранилище moz-extension.
 
-**Расширения:** встроенные (блокировщик, «Без cookie-баннеров» с авто-отказом, «YouTube без рекламы», «Тёмные сайты»)
-и userscripts Greasemonkey/Tampermonkey (@match/@include/@exclude/@run-at/@require/@noframes, GM_* API), установка по ссылке
-на `.user.js` или из Greasy Fork. Расширения Chrome Web Store не поддерживаются: в WebView нет среды WebExtensions.
+**Приватность** — настройки Gecko в духе arkenfox / IronFox (`gecko/GeckoPrefs.kt`, применяются через `GeckoPreferenceController`
+и `GeckoRuntimeSettings`; фактические значения видны в «О программе»):
+- ETP Strict: трекеры, криптомайнеры, фингерпринтеры, соцсети; `cookieBehavior=5` (Total Cookie Protection);
+- защита от фингерпринтинга: FPP (`privacy.fingerprintingProtection`) по умолчанию, RFP (`privacy.resistFingerprinting`) — опция.
+  Для платёжных доменов действуют `resistFingerprinting.exemptedDomains` и `fingerprintingProtection.granularOverrides` (`-AllTargets`);
+- HTTPS-only;
+- DoH — опция: Mozilla TRR (Cloudflare), Quad9, Mullvad, AdGuard; режим «только DoH» или «DoH сначала»;
+- WebRTC: «без утечки IP» по умолчанию (`ice.default_address_only`, `no_host`, `proxy_only_if_behind_proxy`), также «выключен» или «разрешён»;
+- выключены телеметрия, health report, Normandy/исследования, crash reporter, удалённые эксперименты, телеметрия подтверждения TRR,
+  предзагрузка (prefetch/dns-prefetch/preconnect/speculative), удалённая проверка загрузок Safe Browsing.
+  Safe Browsing Gecko работает как в Firefox: локальные хэш-префиксы, URL не отправляются; дополнительно используются локальные фишинг-списки;
+- Referer обрезается до origin для cross-site запросов (`XOriginTrimmingPolicy=2`), GPC включён;
+- данные сайтов удаляются при выходе, а также при старте, если процесс был убит; приватные вкладки можно включить по умолчанию;
+- JIT можно выключить (`javascript.options.ion/baselinejit/native_regexp/wasm_*`), JavaScript при этом работает.
+  В Gecko нет переключателя JIT для отдельного сайта, поэтому опция глобальная.
 
-## Новое в 1.1.0: безопасность
+## Безопасность (перенесено из 1.1.0)
 
-**Безопасный режим оплаты.** Банки, СБП/НСПК, ЮMoney, платёжные шлюзы (CloudPayments, Robokassa, Stripe, PayPal, Adyen…) и серверы 3-D Secure (ACS)
-определяются по встроенному списку (~140 доменов). Подписанные пакеты могут его только дополнять, удалить из него ничего нельзя.
-Также работает эвристика страницы: поля `cc-*`, CVC, iframe платёжных шлюзов, PaymentRequest.
+**Безопасный режим оплаты.** Платёжные сайты определяются так:
+- встроенный список (~140 доменов: банки, СБП/НСПК, ЮMoney, CloudPayments, Robokassa, Stripe, PayPal, Adyen, ACS 3-D Secure);
+  подписанные пакеты могут его только дополнять;
+- эвристика `paydetect.js` встроенного расширения: поля `cc-*`/CVC, iframe платёжных шлюзов, PaymentRequest.
 
-Такие сайты открываются в отдельной вкладке «Банк»:
-- отдельный профиль WebView (MULTI_PROFILE, если WebView его поддерживает);
-- FLAG_SECURE и скрытие чужих оверлеев (Android 12+);
-- `filterTouchesWhenObscured`;
-- реальный UA без шумов и подмен;
-- никакого JS-моста;
-- userscripts запускаются только с явной отметкой «доверять на оплате», и доверие закреплено за SHA-256 кода;
-- антифрод- и 3DS-скрипты не блокируются (`payment-unbreak`);
-- сторонние cookies включаются для вкладки (нужно 3-D Secure).
+Такие сайты открываются во вкладке «Банк»:
+- отдельный `contextId` `tiho-bank`: свои cookie и хранилища, очищаются при закрытии вкладки;
+- **JavaScript сайта никогда не выключается**;
+- все дополнения отключены через Gecko `extensions.quarantinedDomains.list` (~3 400 хостов: базовые домены × типичные поддомены,
+  новые хосты добавляются по ходу работы). Исключение — дополнения из доверенного списка, закреплённые по id + версии + SHA-256 xpi
+  (`extensions.quarantineIgnoredByUser.<id>`). Любое обновление дополнения сбрасывает доверие. Если доверенных нет,
+  домены попадают в `extensions.webextensions.restrictedDomains`;
+- userscripts и наши инъекции на этих доменах не запускаются;
+- FLAG_SECURE, `setHideOverlayWindows` (Android 12+), `filterTouchesWhenObscured`;
+- защита от фингерпринтинга ослаблена (исключения RFP/FPP), чтобы не мешать антифроду и 3-D Secure.
 
-Защитные шимы сами проверяют, не является ли страница или любой её предок (`location.ancestorOrigins`) платёжной, и в этом случае отключаются.
+**Фишинг и вредоносные сайты:**
+- локальные списки phishing-filter и URLhaus (~78 тыс. записей), перед загрузкой — предупреждение (интерстишл), запросов наружу нет;
+- IDN-гомографы: смешанные алфавиты и кириллица, похожая на латиницу, — адрес показывается в punycode;
+- белый список схем: `javascript:`/`file:`/`content:`/`data:`/`intent:` из адресной строки и чужих приложений запрещены, для `intent://` показывается целевое приложение;
+- предупреждения о загрузке APK/EXE/скриптов и о скачивании по HTTP.
 
-**Фишинг и вредоносные сайты.** Используются локальные списки malware-filter (phishing-filter, URLhaus), около 78 тыс. записей.
-Перед загрузкой опасной страницы показывается предупреждение. Запросов наружу нет.
-Также есть:
-- IDN-гомографы: смешанные алфавиты и кириллица, похожая на латиницу. Подозрительный адрес показывается в punycode;
-- предупреждения о загрузке APK/EXE/скриптов и о скачивании по HTTP;
-- запрет схем `javascript:`/`file:`/`content:`/`data:`/`intent:` из адресной строки и чужих приложений;
-- показ целевого приложения для `intent://`;
-- отказ в камере, микрофоне и геолокации сторонним iframe.
+**Userscripts** выполняет встроенное WebExtension `tiho@ivanivorontsov.org` (`assets/tihoext`) в изолированном мире content script.
+Поддерживаются @match/@include/@exclude/@run-at/@require/@noframes и GM_*. Код и @require загружаются только по HTTPS.
+SHA-256 закрепляется при установке, изменённый код требует нового подтверждения.
 
-**Мост JS ↔ приложение.** Используется `WebViewCompat.addWebMessageListener` с правилами `https://*`/`http://*` и сессионным токеном.
-Платёжные origin игнорируются. Ответы асинхронные. На старом WebView используется прежний интерфейс.
-Сервисы сообщают о зависшем рендерере.
+**Подписанные пакеты содержимого** ([tiho-updates](https://github.com/ivanivorontsov-sudo/tiho-updates)):
+- подпись minisign/Ed25519 ключом `primary` или `backup` (те же, что в 1.1.0);
+- монотонная версия, срок действия, SHA-256 каждого файла, атомарная замена;
+- раз в сутки (JobScheduler, по умолчанию только Wi-Fi) или по кнопке.
 
-**Userscripts.** Скрипты и `@require` загружаются только по HTTPS. SHA-256 показывается и закрепляется при установке.
-Если код изменился, установка требует нового подтверждения. Изменённый на диске код отключается.
-Есть каталог скриптов с закреплёнными хэшами. Для сторонних списков фильтров действует то же закрепление SHA-256.
+Логику «движок WebView устарел» заменила собственная проверка обновления APK: Gecko обновляется только вместе с приложением.
 
-**Подписанные обновления** (публичный репозиторий [tiho-updates](https://github.com/ivanivorontsov-sudo/tiho-updates)):
-- **Пакеты содержимого:** списки фильтров, фишинг-списки, JS-шимы, `payment-domains.json`, каталог userscripts, `min_webview_major`.
-  Проверки:
-  - подпись minisign/Ed25519 одним из двух вшитых ключей (основной `ED285F174C49C57B`, резервный `5A83C100C35A8CFA`); эти ключи не совпадают с ключом APK;
-  - монотонная версия (защита от отката и повтора), срок действия, SHA-256 каждого файла;
-  - атомарная замена и автоматический откат, если блокировщик не собрался.
-  Проверка идёт раз в сутки через JobScheduler (по умолчанию только Wi-Fi) или по кнопке.
-  Опция «Только списки, без кода» отключает JS из пакетов.
-- **Обновление приложения:** подписанный `app/update.json`, затем скачивание APK по HTTPS с GitHub.
-  Сверяются SHA-256, имя пакета, versionCode и сертификат подписи (`F1:72:85:…:D6:D0`). Установка через PackageInstaller, только после подтверждения пользователя.
-- **Движок:** если версия WebView ниже безопасного минимума (встроено 140; пакет может только поднять, сейчас 148), показывается баннер «Движок устарел» со ссылкой на обновление.
+## Самообновление
 
-Пакеты публикуются утилитой `tools/tiho-publish.py` (команды `keygen` / `pack` / `update` / `verify`).
+* `app/update-v2.json` в tiho-updates (формат 2, подпись minisign). Внутри: versionCode/versionName, `gecko_version`, срок действия
+  и карта `apks` по ABI (URL, SHA-256, размер), `cert_sha256`.
+* Перед установкой приложение проверяет подпись, срок действия, пакет, versionCode > текущего и выбирает APK по `Build.SUPPORTED_ABIS`.
+  Затем APK скачивается по HTTPS, сверяются размер и SHA-256, после этого — пакет, versionCode и сертификат подписи самого APK.
+  Установка идёт через `PackageInstaller` с подтверждением пользователя. Проверка раз в сутки (можно выключить) или кнопкой «Проверить обновление».
+* **Ключи.** `update-v2.json` подписывается **третьим ключом `ci`** (`RWTYQTo6…`). Он хранится только в секрете GitHub Actions
+  `TIHO_CI_SIGNING_KEY` (+ пароль) и действует только для обновлений приложения: пакеты содержимого с ним не принимаются (`TrustedKeys.appKeys`
+  против `TrustedKeys.keys`). Почему отдельный ключ: ежедневная сборка должна подписывать без участия человека, а держать в CI основной
+  офлайн-ключ нельзя. Утечка `ci` не даёт ни подменить фильтры и JS-шимы, ни поставить чужой APK: APK должен совпасть по SHA-256
+  и быть подписан сертификатом `privbrowser`, иначе установка отклоняется. Худший случай — навязать уже подписанную нами старую версию,
+  а от этого защищают versionCode и срок действия. `primary`/`backup` тоже принимаются для update-v2.json и могут перевыпустить его вручную.
+* **Мост 1.1.0 → 2.x.** Апдейтер 1.1.0 читает старый `app/update.json`, принимает APK до 64 МиБ и не знает ключа `ci`. Поэтому `update.json`
+  ведёт на **1.1.1** (versionCode 4, WebView, ~8 МБ), а 1.1.1 уже читает `update-v2.json` и ставит 2.x (versionCode 5+).
+* `.github/workflows/gecko-update.yml` запускается каждый день в 02:23 UTC. Он смотрит последнюю стабильную `org.mozilla.geckoview:geckoview`
+  в maven-metadata. Если версия новая, workflow поднимает `gecko.properties` (versionCode+1, 2.0.N) и делает коммит и тег, а `build.yml`
+  после этого собирает и тестирует APK, подписывает его ключом `privbrowser`, создаёт Release здесь и `app-vX` в tiho-updates
+  (через ветку `incoming` и workflow `publish-app.yml`, который сверяет SHA-256/сертификат), а также подписывает и публикует `update-v2.json`.
+  Если версия Gecko не менялась, workflow только переподписывает `update-v2.json` до истечения срока.
 
-## Исследование приватности: что применено
-
-Изучены патчи Cromite/Bromite, Mull и arkenfox user.js, Brave Shields (farbling), Tor Browser (RFP), DuckDuckGo,
-рекомендации privacyguides.org, методики EFF Cover Your Tracks, CreepJS и BrowserLeaks.
-
-| Техника (источник) | В «Тихо» |
-|---|---|
-| Блокировка рекламы/трекеров, косметика, скриптлеты (Brave, uBO) | ✅ adblock-rust + uBO-ресурсы, блок fetch/XHR/подресурсов |
-| CNAME-клоакинг (AdGuard, HaGeZi) | ✅ списком AdGuard CNAME + HaGeZi (DNS-уровень в WebView недоступен) |
-| Удаление трекинговых параметров, AMP/redirect-разворачивание (Firefox, DDG, Brave) | ✅ |
-| `<a ping>`, `navigator.sendBeacon` (arkenfox, Cromite) | ✅ блокируются |
-| Referer: обрезка cross-site до origin (arkenfox XOrigin) | ✅ `document.referrer` + навигации; строгий режим — опция |
-| GPC / DNT (Cromite, DDG) | ✅ `navigator.globalPrivacyControl` + заголовки основных запросов |
-| Сторонние cookies (Brave, Cromite) | ✅ выключены; инкогнито — отдельный профиль WebView |
-| Очистка при закрытии вкладки/выходе (arkenfox sanitizeOnShutdown) | ✅ |
-| Canvas/Audio/WebGL/measureText/ClientRects — шум по сессии+сайту (Brave farbling, Cromite) | ✅ |
-| WebGL vendor/renderer — единое распространённое значение (Tor-подход) | ✅ «Qualcomm / Adreno (TM) 640»; WebGL можно выключить |
-| hardwareConcurrency/deviceMemory/platform/connection (Brave, Tor) | ✅ 8 / 4 / «Linux armv8l» |
-| screen = окно, colorDepth 24 (Brave) | ✅ |
-| Часовой пояс UTC (Tor RFP) | ✅ опция (по умолчанию выкл — ломает сайты) |
-| UA без модели и версии + Client Hints low-entropy (Cromite, Chrome UA reduction) | ✅ «Android 10; K», Chrome/NN.0.0.0; UserAgentMetadata где WebView поддерживает |
-| Battery, Gamepad, WebGPU, IdleDetection, Keyboard, getInstalledRelatedApps, датчики, MIDI, SpeechSynthesis-голоса (Cromite) | ✅ удалены/пустые |
-| WebRTC (Cromite, Tor) | ✅ выключен по умолчанию; режим «только relay» |
-| Cookie-баннеры авто-отказ (DDG, Brave) | ✅ встроенное расширение |
-| HTTPS-only (Tor, Brave) | ✅ с предупреждением |
-| Телеметрия WebView, Safe Browsing (Cromite) | ✅ MetricsOptOut, SafeBrowsing off, X-Requested-With пустой |
-| Letterboxing, allowlist шрифтов (Tor) | ❌ невозможно в WebView без форка движка |
-| DNT/GPC/Referer на подресурсах, заголовки Client Hints | ❌ WebView не даёт менять заголовки подзапросов |
-| Партиционирование хранилища по eTLD+1 (Brave, Firefox TCP) | ⚠️ частично: встроенное в Chromium + очистка; per-tab профили — нет |
-| Защита в Web Workers, невидимая для CreepJS | ❌ JS-подмена детектируется |
-
-## Результаты тестов (эмулятор Android 11, WebView 83)
-
-* adblock.turtlecute.org (продолжение d3ward/toolz): **95 %** (126/132) в 1.1.0 с пакетом v1; в 1.0.1 было 91 % (120/132).
-* EFF Cover Your Tracks: **«strong protection against Web tracking»**; Canvas и AudioContext — «randomized».
-* BrowserLeaks: WebRTC — **No Leak** (RTCPeerConnection отсутствует); Canvas — подпись уникальна в каждой сессии/на каждом сайте (шум);
-  WebGL — Unmasked Vendor «Qualcomm»; navigator — «Linux armv8l», 8 ядер, 4 ГБ; screen = окно.
-
-## Сборка локально
+## Сборка
 
 ```bash
-cd rust/tihoadblock
-cargo test --release --lib && cargo build --release --lib
-cargo ndk -t arm64-v8a -t armeabi-v7a -P 26 -o ../../app/src/main/jniLibs build --release --lib
-cd ../.. && ./gradlew :app:testReleaseUnitTest :app:assembleRelease
+./gradlew :app:testDebugUnitTest :app:assembleRelease          # + -PwithX86 для эмулятора x86_64
 ```
 
-Подпись: `keystore/privbrowser-release.p12` + `keystore.properties` (storePassword/keyAlias/keyPassword) или переменные
-`TIHO_KEYSTORE_PASSWORD`, `TIHO_KEY_ALIAS`, `TIHO_KEY_PASSWORD`. Для эмулятора x86_64: `-PwithX86`.
+Подпись: `keystore/privbrowser-release.p12` + `keystore.properties` или переменные `TIHO_KEYSTORE_PASSWORD`, `TIHO_KEY_ALIAS`,
+`TIHO_KEY_PASSWORD`. Нужны platform `android-37.1` и build-tools 37 (этого требует AAR GeckoView 157).
 
-Ресурсы скриптлетов пересобираются `node tools/gen-resources.mjs` из исходников uBlock Origin.
+## Результаты тестов (эмулятор Android x86_64, программный рендеринг, Тихо 2.0.0 / GeckoView 157.0.20260924084938)
+
+* adblock.turtlecute.org: **98 %** (130/132) с uBlock Origin (в 1.1.0 было 95 %).
+* EFF Cover Your Tracks: **«strong protection against Web tracking»**: трекинговая реклама и невидимые трекеры блокируются.
+  Отпечаток остаётся уникальным, так как FPP — не RFP; режим RFP можно включить в настройках.
+* BrowserLeaks WebRTC: **No Leak**: RTCPeerConnection доступен, но локальный и публичный IP не раскрываются.
+* AMO: uBlock Origin (встроен) и Dark Reader установлены из AMO внутри приложения, Dark Reader работает.
+* Stripe (checkout.stripe.dev): открылась вкладка «Банк» с FLAG_SECURE, Dark Reader приостановлен, доверен 1 (uBO, закреплён).
+  JavaScript работает: содержимое страницы рисуется клиентским JS, в статическом HTML его нет.
+* Обновление: 1.1.0 → 1.1.1 → 2.0.0 встаёт поверх через встроенный апдейтер (PackageInstaller), данные сохраняются.
 
 ## Честные ограничения
 
-* Движок — System WebView: качество изоляции сайтов и обновления безопасности зависят от установленного WebView.
-* Защита от отпечатков работает на уровне JavaScript (как расширения), а не в движке, как в Brave/Cromite/Tor: не покрывает
-  Web Workers, определяется продвинутыми тестами (CreepJS видит подмену), шрифты не подменяются (screen = размер окна, как в Brave).
-* Referer сторонних подресурсов и заголовки Client Hints регулирует сам WebView (по умолчанию `strict-origin-when-cross-origin`).
-* WebView не даёт перехватывать тело POST-запросов и WebSocket, поэтому часть запросов блокируется только по URL.
-* DNS-over-HTTPS — экспериментально, через локальный прокси; WebRTC UDP идёт мимо прокси (поэтому WebRTC по умолчанию выключен).
-* Нет WebExtensions (Chrome Web Store), нет синхронизации, нет Safe Browsing (намеренно; фишинг-списки локальные).
-* В публичном API WebView нет изолированных миров для скриптов, как у расширений. Шимы и userscripts выполняются в мире страницы.
-  Защита строится на захвате ссылок до запуска страничного кода и на сессионном токене.
-* Отдельный профиль «Банк» (MULTI_PROFILE) и `addWebMessageListener` зависят от версии WebView.
-  На старом WebView вкладка оплаты использует общий профиль (cookies очищаются при закрытии), а мост — прежний интерфейс.
-* Блокировка `fetch`/XHR и косметика запрашиваются у приложения асинхронно. Значения GM_* — снимок на момент загрузки страницы.
-* В режиме оплаты нельзя скачать файлы blob:. Переход на платёжный сайт внутри страницы (POST, OAuth, 3-D Secure)
-  остаётся в той же вкладке с защитой «на месте», а не переносится во вкладку «Банк»: иначе ломаются cookies сессии.
-* Сайты на сертификатах «Russian Trusted Root CA» (часть доменов Сбера и др.) WebView не открывает: Android не доверяет этому УЦ.
+* APK ~95 МБ на ABI: библиотеки Gecko. Каждый патч безопасности Gecko — новый полный APK.
+* JIT выключается только глобально, для отдельного сайта нельзя.
+* Нет поисковых подсказок в адресной строке и синхронизации.
+* MV2-дополнения получают доступ к сайтам при установке; переключатели есть только для необязательных разрешений.
+  На платёжных доменах доступ всё равно снимает карантин.
+* Эвристика оплаты срабатывает после загрузки страницы. Если платёжная форма появилась внутри обычной вкладки, защита включается
+  «на месте» (карантин хоста для дополнений), а сама вкладка не переносится в «Банк»: иначе ломается сессия.
+* Сайты на сертификатах «Russian Trusted Root CA» Gecko не открывает: этот УЦ не входит в хранилище Mozilla.
 
-Лицензия: GPL-3.0 (используются скриптлеты uBlock Origin и списки под GPL-3.0). adblock-rust — MPL-2.0.
+Лицензия: GPL-3.0. uBlock Origin — GPL-3.0, GeckoView — MPL-2.0.
