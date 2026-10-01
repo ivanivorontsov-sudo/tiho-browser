@@ -34,8 +34,11 @@ class PopupNavigationTest {
         val loc = IntArray(2); onMain { gv.getLocationOnScreen(loc) }
         val x = loc[0] + gv.width / 2f; val y = loc[1] + gv.height / 2f
         val t = SystemClock.uptimeMillis()
-        ins.sendPointerSync(MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0))
-        ins.sendPointerSync(MotionEvent.obtain(t, t + 80, MotionEvent.ACTION_UP, x, y, 0))
+        // UiAutomation injects with shell privileges (works even if a system ANR dialog briefly has focus).
+        for ((a, dt) in listOf(MotionEvent.ACTION_DOWN to 0L, MotionEvent.ACTION_UP to 80L)) {
+            val e = MotionEvent.obtain(t, t + dt, a, x, y, 0).apply { source = android.view.InputDevice.SOURCE_TOUCHSCREEN }
+            ins.uiAutomation.injectInputEvent(e, true); e.recycle()
+        }
     }
 
     private fun page(body: String) = "data:text/html;charset=utf-8," + Uri.encode("<meta name=viewport content='width=device-width'><body style='margin:0'>$body</body>")
