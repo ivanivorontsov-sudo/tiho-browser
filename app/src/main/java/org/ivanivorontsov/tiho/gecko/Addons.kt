@@ -55,6 +55,8 @@ class Addons(private val app: TihoApp) {
     /** Installs we started ourselves (bundled/AMO after our own dialog) → no second Gecko permission prompt. */
     private val preApproved = HashMap<String, Boolean>()
     var onTabRequest: ((String) -> GeckoSession?)? = null
+    /** New unopened tab session for Gecko to open (tabs.create). */
+    var onNewTabForGecko: (() -> GeckoSession?)? = null
     var onPopup: ((WebExtension, GeckoSession) -> Unit)? = null
     var toast: (String) -> Unit = {}
 
@@ -131,10 +133,16 @@ class Addons(private val app: TihoApp) {
         })
         ext.setTabDelegate(object : WebExtension.TabDelegate {
             override fun onNewTab(source: WebExtension, details: WebExtension.CreateTabDetails): GeckoResult<GeckoSession> {
-                val s = onTabRequest?.invoke(details.url ?: "about:blank") ?: return GeckoResult.fromValue(null)
-                return GeckoResult.fromValue(s)
+                return try {
+                    val s = onNewTabForGecko?.invoke()?.takeIf { !it.isOpen } ?: return GeckoResult.fromValue(null)
+                    GeckoResult.fromValue(s)
+                } catch (e: Throwable) {
+                    android.util.Log.e("Tiho", "tabs.create", e)
+                    details.url?.let { u -> onTabRequest?.invoke(u) }
+                    GeckoResult.fromValue(null)
+                }
             }
-            override fun onOpenOptionsPage(source: WebExtension) { source.metaData.optionsPageUrl?.let { onTabRequest?.invoke(it) } }
+            override fun onOpenOptionsPage(source: WebExtension) { try { source.metaData.optionsPageUrl?.let { onTabRequest?.invoke(it) } } catch (e: Throwable) { android.util.Log.e("Tiho", "options page", e) } }
         })
     }
 

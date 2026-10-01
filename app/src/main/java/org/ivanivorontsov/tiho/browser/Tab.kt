@@ -24,7 +24,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * One tab = one GeckoSession. «Банк» tabs use their own cookie jar (contextId "tiho-bank"); incognito tabs are
  * Gecko private sessions (nothing is written to disk).
  */
-class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean, val payment: Boolean = false) {
+class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean, val payment: Boolean = false,
+          /** False for sessions handed back to Gecko (onNewSession, tabs.create): Gecko opens them itself and throws
+           *  "Must use an unopened GeckoSession instance" if we already did. */
+          openNow: Boolean = true) {
     val id = nextId.incrementAndGet()
     private val app get() = browser.app
 
@@ -77,15 +80,34 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
                 try { Uri.parse(event.uri).host?.let { h -> blockedHosts[h] = (blockedHosts[h] ?: 0) + 1 } } catch (_: Exception) {}
             }
         }
-        session.open(app.engine.runtime)
-        app.addons.tihoExt?.let { attachTihoExt(it) }
+        if (openNow) {
+            session.open(app.engine.runtime)
+            app.addons.tihoExt?.let { attachTihoExt(it) }
+        } else whenOpen { app.addons.tihoExt?.let { attachTihoExt(it) } }
     }
+
+    /** Runs [action] on the main thread once Gecko has opened this (popup) session; gives up after ~10 s. */
+    private fun whenOpen(tries: Int = 0, action: () -> Unit) {
+        browser.main.postDelayed({
+            when {
+                session.isOpen -> guard("whenOpen") { action() }
+                tries < 200 && browser.tabs.contains(this) -> whenOpen(tries + 1, action)
+                else -> Log.w("Tiho", "tab $id: popup session was never opened by Gecko")
+            }
+        }, 50)
+    }
+
+    /** Navigation callbacks must never take the app down: log and carry on. */
+    private inline fun <T> guard(what: String, fallback: T, block: () -> T): T =
+        try { block() } catch (e: Throwable) { Log.e("Tiho", "tab $id: $what failed", e); fallback }
+    private inline fun guard(what: String, block: () -> Unit) = guard(what, Unit, block)
 
     /** Messages from our built-in extension's content scripts in this tab (payment heuristic, GM_setValue). */
     fun attachTihoExt(ext: WebExtension) {
+        if (!session.isOpen) return
         session.webExtensionController.setMessageDelegate(ext, object : WebExtension.MessageDelegate {
-            override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? {
-                val m = message as? JSONObject ?: return null
+            override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? = guard("ext message", null) {
+                val m = message as? JSONObject ?: return@guard null
                 when (m.optString("type")) {
                     "pay" -> onPaySignals(m)
                     "gm" -> {
@@ -96,7 +118,7 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
                         }
                     }
                 }
-                return null
+                null
             }
         }, "tiho")
     }
@@ -112,7 +134,7 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
 
     fun dismissPayHint() { payHint.value?.let { payHintDismissed += it.host }; payHint.value = null }
 
-    fun load(u: String) { warning.value = null; session.loadUri(u) }
+    fun load(u: String) { warning.value = null; if (u.isNotEmpty()) session.loadUri(u) }
     fun reload() = session.reload()
     fun stop() = session.stop()
     fun goBack() = session.goBack()
@@ -135,10 +157,10 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
     fun close() { try { session.close() } catch (_: Exception) {} }
 
     private inner class Nav : GeckoSession.NavigationDelegate {
-        override fun onLocationChange(session: GeckoSession, u: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
+        override fun onLocationChange(session: GeckoSession, u: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) = guard("onLocationChange") {
             val s = u ?: ""
             url.value = if (s == "about:blank") "" else s
-            val host = try { Uri.parse(s).host } catch (_: Exception) { null }
+            val host = NavPolicy.hostOf(s)
             homograph.value = host?.let { Homograph.check(it) }?.takeIf { it.suspicious }
             paymentContext.value = host != null && app.payments.isPayment(host)
             if (payHint.value?.host != host) payHint.value = null
@@ -148,41 +170,44 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
         override fun onCanGoBack(session: GeckoSession, v: Boolean) { canBack.value = v }
         override fun onCanGoForward(session: GeckoSession, v: Boolean) { canForward.value = v }
 
-        override fun onLoadRequest(session: GeckoSession, req: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> {
-            val u = req.uri
-            val scheme = SchemePolicy.schemeOf(u) ?: return GeckoResult.allow()
-            // Built-in pages and extension pages are fine; file:, content:, javascript:, chrome: etc. never load.
-            if (scheme == "moz-extension" || scheme == "about" || scheme == "resource" && u.startsWith("resource://android/assets/tihoext/")) return GeckoResult.allow()
-            if (!SchemePolicy.allowedInPage(scheme)) {
-                browser.onExternalScheme(this@Tab, u, req.hasUserGesture)
-                return GeckoResult.deny()
-            }
-            if (AddonPolicy.isXpiUrl(u)) {
-                app.addons.installFromAmo(AddonPolicy.slugFromListing(req.triggerUri) ?: AddonPolicy.slugFromListing(url.value) ?: Uri.parse(u).lastPathSegment ?: u)
-                return GeckoResult.deny()
-            }
-            if (u.endsWith(".user.js") && (scheme == "https" || scheme == "http")) { browser.offerUserscript(u); return GeckoResult.deny() }
-            val host = try { Uri.parse(u).host } catch (_: Exception) { null }
-            if (host != null) {
-                val hit = if (host in phishingBypass) null else app.threats.match(u)
-                if (hit != null) {
-                    warning.value = Warning.Phishing(u, host, hit.rule)
-                    return GeckoResult.deny()
-                }
-                return learnThenAllow(host)
-            }
-            return GeckoResult.allow()
-        }
+        override fun onLoadRequest(session: GeckoSession, req: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> =
+            guard("onLoadRequest", GeckoResult.allow()) { topLevel(req) }
 
-        override fun onSubframeLoadRequest(session: GeckoSession, req: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> {
-            val host = try { Uri.parse(req.uri).host } catch (_: Exception) { null } ?: return GeckoResult.allow()
-            if (app.threats.match(req.uri) != null && host !in phishingBypass) return GeckoResult.deny()
-            return learnThenAllow(host)
-        }
+        override fun onSubframeLoadRequest(session: GeckoSession, req: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> =
+            guard("onSubframeLoadRequest", GeckoResult.allow()) {
+                when (val d = NavPolicy.decide(NavPolicy.Request(req.uri, topLevel = false, safePayment = safePayment), { app.threats.match(it)?.rule }, phishingBypass)) {
+                    is NavPolicy.Decision.Phishing, is NavPolicy.Decision.External -> GeckoResult.deny()
+                    is NavPolicy.Decision.Http -> learnThenAllow(d.host)
+                    else -> GeckoResult.allow()
+                }
+            }
 
         override fun onNewSession(session: GeckoSession, uri: String): GeckoResult<GeckoSession> {
-            val t = browser.newTabForPopup(this@Tab)
-            return GeckoResult.fromValue(t.session)
+            // target=_blank / window.open / rel=noopener: Gecko opens the session we return — it must NOT be open yet.
+            return try {
+                val t = browser.newTabForPopup(this@Tab)
+                if (t.session.isOpen) throw IllegalStateException("popup session already open")
+                GeckoResult.fromValue(t.session)
+            } catch (e: Throwable) {
+                Log.e("Tiho", "tab $id: onNewSession($uri) failed, loading in the same tab", e)
+                if (uri.isNotEmpty() && uri != "about:blank") browser.main.post { guard("popup fallback") { load(uri) } }
+                GeckoResult.fromValue(null)
+            }
+        }
+    }
+
+    private fun topLevel(req: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> {
+        val r = NavPolicy.Request(req.uri, req.triggerUri, url.value, topLevel = true,
+            sameWindow = req.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_CURRENT,
+            hasUserGesture = req.hasUserGesture, safePayment = safePayment)
+        return when (val d = NavPolicy.decide(r, { app.threats.match(it)?.rule }, phishingBypass)) {
+            NavPolicy.Decision.Allow -> GeckoResult.allow()
+            is NavPolicy.Decision.External -> { browser.onExternalScheme(this, d.url, req.hasUserGesture); GeckoResult.deny() }
+            is NavPolicy.Decision.InstallXpi -> { app.addons.installFromAmo(d.slugOrUrl); GeckoResult.deny() }
+            is NavPolicy.Decision.OfferUserscript -> { browser.offerUserscript(d.url); GeckoResult.deny() }
+            is NavPolicy.Decision.Phishing -> { warning.value = Warning.Phishing(d.url, d.host, d.rule); GeckoResult.deny() }
+            is NavPolicy.Decision.Unwrap -> { browser.main.post { guard("unwrap") { load(d.url) } }; GeckoResult.deny() }
+            is NavPolicy.Decision.Http -> learnThenAllow(d.host)
         }
     }
 
@@ -191,23 +216,26 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
         if (!(payment || app.payments.isPayment(host) || PaymentDomains.looksLikeAcs(host))) return GeckoResult.allow()
         if (!app.engine.learnPaymentHost(host)) return GeckoResult.allow()
         val r = GeckoResult<AllowOrDeny>()
-        app.engine.afterPrefsApplied { r.complete(AllowOrDeny.ALLOW) }
+        val done = java.util.concurrent.atomic.AtomicBoolean(false)
+        val finish = { if (done.compareAndSet(false, true)) r.complete(AllowOrDeny.ALLOW) }
+        app.engine.afterPrefsApplied { finish() }
+        browser.main.postDelayed({ if (!done.get()) Log.w("Tiho", "prefs for $host not confirmed in 3 s, loading anyway"); finish() }, 3000)
         return r
     }
 
     private inner class Progress : GeckoSession.ProgressDelegate {
-        override fun onPageStart(session: GeckoSession, u: String) { loading.value = true; progress.floatValue = 0.05f; if (!incognito) app.markDirty() }
+        override fun onPageStart(session: GeckoSession, u: String) = guard("onPageStart") { loading.value = true; progress.floatValue = 0.05f; if (!incognito) app.markDirty() }
         override fun onPageStop(session: GeckoSession, success: Boolean) { loading.value = false; progress.floatValue = 1f }
         override fun onProgressChange(session: GeckoSession, p: Int) { progress.floatValue = p / 100f }
-        override fun onSecurityChange(session: GeckoSession, info: GeckoSession.ProgressDelegate.SecurityInformation) { secure.value = info.isSecure }
+        override fun onSecurityChange(session: GeckoSession, info: GeckoSession.ProgressDelegate.SecurityInformation) = guard("onSecurityChange") { secure.value = info.isSecure }
     }
 
     private inner class Content : GeckoSession.ContentDelegate {
         override fun onTitleChange(session: GeckoSession, t: String?) { title.value = t ?: "" }
         override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) { browser.fullscreen.value = fullScreen }
-        override fun onCloseRequest(session: GeckoSession) { browser.closeTab(this@Tab) }
-        override fun onContextMenu(session: GeckoSession, x: Int, y: Int, e: GeckoSession.ContentDelegate.ContextElement) { browser.contextMenu(this@Tab, e) }
-        override fun onExternalResponse(session: GeckoSession, response: WebResponse) { browser.downloads.offer(this@Tab, response) }
+        override fun onCloseRequest(session: GeckoSession) = guard("onCloseRequest") { browser.main.post { guard("close") { browser.closeTab(this@Tab) } } }
+        override fun onContextMenu(session: GeckoSession, x: Int, y: Int, e: GeckoSession.ContentDelegate.ContextElement) = guard("onContextMenu") { browser.contextMenu(this@Tab, e) }
+        override fun onExternalResponse(session: GeckoSession, response: WebResponse) = guard("onExternalResponse") { browser.downloads.offer(this@Tab, response) }
         override fun onCrash(session: GeckoSession) { recover("Процесс страницы упал — вкладка перезапущена") }
         override fun onKill(session: GeckoSession) { recover("Система выгрузила вкладку из памяти — она перезапущена") }
     }

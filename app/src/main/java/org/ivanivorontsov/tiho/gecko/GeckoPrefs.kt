@@ -92,6 +92,8 @@ object GeckoPrefs {
         "privacy.partition.serviceWorkers" to true,
         "privacy.query_stripping.enabled" to true,
         "privacy.query_stripping.enabled.pbmode" to true,
+        // Remote settings are off, so give Gecko's query stripping our own list (utm_* prefixes are handled by uBO filters).
+        "privacy.query_stripping.strip_list" to org.ivanivorontsov.tiho.privacy.UrlCleaner.GLOBAL.sorted().joinToString(" "),
         "privacy.bounceTrackingProtection.mode" to 1,
         "network.http.referer.spoofSource" to false,
         "dom.battery.enabled" to false,

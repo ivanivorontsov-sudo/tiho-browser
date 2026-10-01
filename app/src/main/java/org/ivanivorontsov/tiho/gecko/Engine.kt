@@ -129,11 +129,13 @@ class Engine(private val app: TihoApp) {
     private val waiters = ArrayList<() -> Unit>()
 
     /** Runs [cb] (main thread) once every pref change requested so far has been applied by Gecko. */
-    fun afterPrefsApplied(cb: () -> Unit) { if (inFlight == 0) cb() else waiters += cb }
+    fun afterPrefsApplied(cb: () -> Unit) { if (inFlight == 0) runSafely(cb) else waiters += cb }
+
+    private fun runSafely(cb: () -> Unit) { try { cb() } catch (e: Throwable) { Log.e("Tiho", "afterPrefsApplied callback", e) } }
 
     private fun settled() {
         inFlight = maxOf(0, inFlight - 1)
-        if (inFlight == 0) { val w = waiters.toList(); waiters.clear(); w.forEach { it() } }
+        if (inFlight == 0) { val w = waiters.toList(); waiters.clear(); w.forEach { runSafely(it) } }
     }
 
     fun applyDynamicPrefs() {

@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import org.ivanivorontsov.tiho.TihoApp
 import org.ivanivorontsov.tiho.ext.UserScript
 import org.ivanivorontsov.tiho.ext.UserScriptPin
+import org.ivanivorontsov.tiho.privacy.UrlCleaner
 import org.ivanivorontsov.tiho.security.Homograph
 import org.ivanivorontsov.tiho.security.SchemePolicy
 import org.mozilla.geckoview.GeckoSession
@@ -52,6 +53,8 @@ class Browser(val app: TihoApp) {
     init {
         app.browser = this
         app.addons.onTabRequest = { url -> newTab(url, select = true).session }
+        // tabs.create(): like window.open, Gecko opens and loads the session itself.
+        app.addons.onNewTabForGecko = { newTab(null, select = true, openNow = false).session }
         app.addons.onPopup = { ext, s -> popup.value = ext to s }
         app.addons.toast = { toast(it) }
     }
@@ -63,8 +66,9 @@ class Browser(val app: TihoApp) {
     fun toast(text: String) = main.post { Toast.makeText(app, text, Toast.LENGTH_SHORT).show() }
 
     // ------------------------------------------------------------------ tabs
-    fun newTab(url: String? = null, incognito: Boolean = prefs.incognitoDefault, payment: Boolean = false, select: Boolean = true): Tab {
-        val t = Tab(this, incognito, prefs.desktopDefault, payment)
+    fun newTab(url: String? = null, incognito: Boolean = prefs.incognitoDefault, payment: Boolean = false, select: Boolean = true,
+               openNow: Boolean = true): Tab {
+        val t = Tab(this, incognito, prefs.desktopDefault, payment, openNow)
         tabs += t
         if (select) select(t)
         if (url != null) t.load(url)
@@ -73,14 +77,19 @@ class Browser(val app: TihoApp) {
     }
 
     /** window.open / target=_blank: same privacy context as the opener. */
-    fun newTabForPopup(opener: Tab): Tab = newTab(null, opener.incognito, opener.payment, select = true)
+    fun newTabForPopup(opener: Tab): Tab {
+        val c = NavPolicy.popupContext(opener.incognito, opener.payment)
+        return newTab(null, c.incognito, c.payment, select = true, openNow = false)
+    }
 
     fun select(t: Tab) {
         val gv = geckoView
         current.value?.let { if (it !== t) it.session.setActive(false) }
         current.value = t
-        if (gv != null && gv.session !== t.session) { gv.releaseSession(); gv.setSession(t.session) }
-        t.session.setActive(true)
+        try {
+            if (gv != null && gv.session !== t.session) { gv.releaseSession(); gv.setSession(t.session) }
+            t.session.setActive(true)
+        } catch (e: Throwable) { android.util.Log.e("Tiho", "select tab", e) }
         screen.value = Screen.BROWSER
         updateWindowSecurity()
     }
@@ -260,7 +269,7 @@ class Browser(val app: TihoApp) {
         if (link != null) {
             items += "Открыть в новой вкладке" to { open(link, null) }
             items += "Открыть в приватной вкладке" to { newTab(link, incognito = true) }
-            items += "Копировать ссылку" to { copy(link) }
+            items += "Копировать ссылку" to { copy(UrlCleaner.clean(link)) }
             items += "Поделиться ссылкой" to { share(link) }
         }
         if (src != null) {
@@ -276,8 +285,11 @@ class Browser(val app: TihoApp) {
         toast("Скопировано")
     }
 
+    /** Shares a link without tracking parameters / redirect wrappers. */
     fun share(text: String) {
-        activity?.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "Поделиться"))
+        val clean = try { UrlCleaner.clean(text) } catch (_: Exception) { text }
+        try { activity?.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, clean), "Поделиться")) }
+        catch (_: Exception) { toast("Не удалось поделиться") }
     }
 
     fun openDownload(name: String, uri: String?, mime: String?) {

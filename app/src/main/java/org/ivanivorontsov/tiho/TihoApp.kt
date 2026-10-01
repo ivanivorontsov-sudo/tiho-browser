@@ -37,6 +37,7 @@ class TihoApp : Application() {
         super.onCreate()
         // GeckoView runs extra processes (:tab, :gpu, …) that also instantiate the Application: keep them lean.
         if (!isMainProcess()) return
+        org.ivanivorontsov.tiho.browser.MainLoopGuard.install { browser?.snack("Ошибка при открытии страницы — браузер продолжает работу") }
         prefs = Prefs(this)
         migrateFrom1x()
         payments = Payments(prefs).also { it.refresh() }

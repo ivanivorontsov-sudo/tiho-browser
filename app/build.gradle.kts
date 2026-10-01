@@ -38,6 +38,7 @@ android {
         versionName = appVersionName
         buildConfigField("String", "GECKO_VERSION", "\"$geckoVersion\"")
         androidResources.localeFilters += listOf("ru")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // One APK per ABI (GeckoView is ~45-60 MB per ABI). x86_64 only with -PwithX86 (emulator tests).
@@ -121,6 +122,12 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20231013")
+
+    // Instrumented navigation tests (emulator / device): popups, target=_blank, window.open, tabs.create.
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
 
 // Release APKs are only ever signed with the privbrowser release key (keystore/privbrowser-release.p12 locally,
