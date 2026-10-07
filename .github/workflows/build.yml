@@ -139,7 +139,11 @@ jobs:
             gh release upload "$TAG" dist/* testdist/* --clobber
             gh release edit "$TAG" --notes "$NOTES"
           else
-            gh release create "$TAG" dist/* testdist/* --title "Тихо $VERSION" --notes "$NOTES" --target "$(git rev-parse HEAD)"
+            # An existing tag (tag push / gecko-update / dispatch with ref=vX) is used as is: passing --target for a commit whose
+            # .github/workflows differ from main's tip makes the Releases API demand `workflows: write` (403 for GITHUB_TOKEN).
+            TARGET=()
+            git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null || TARGET=(--target "$(git rev-parse HEAD)")
+            gh release create "$TAG" dist/* testdist/* --title "Тихо $VERSION" --notes "$NOTES" "${TARGET[@]}"
           fi
 
       - name: Publish to tiho-updates (update-v2.json signed with the CI key)
