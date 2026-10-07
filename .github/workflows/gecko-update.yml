@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: gecko-update
@@ -34,6 +35,7 @@ jobs:
       - id: c
         env:
           FORCE: ${{ inputs.force }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           META=https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/maven-metadata.xml
@@ -51,10 +53,33 @@ jobs:
               commit -qam "GeckoView $LATEST → Тихо $NVN ($NVC)"
             git tag "v$NVN"
             git push origin HEAD:main "v$NVN"
-            echo "bump=true" >> "$GITHUB_OUTPUT"; echo "tag=v$NVN" >> "$GITHUB_OUTPUT"; echo "refresh=false" >> "$GITHUB_OUTPUT"
+            { echo "bump=true"; echo "tag=v$NVN"; echo "refresh=false"; } >> "$GITHUB_OUTPUT"
           else
+            # Self-healing: the tag of the current version is pushed before build.yml runs, so a failed build would never be
+            # retried. If v$versionName has no published Release with all signed APKs, or the tiho-updates manifest is older,
+            # rebuild/publish that existing tag (no new commit or version bump; build.yml's publish steps are idempotent).
+            VN=$(grep -oP '^versionName=\K.*' gecko.properties); TAG="v$VN"
+            MANIFEST=$(curl -fsSL --retry 3 https://raw.githubusercontent.com/ivanivorontsov-sudo/tiho-updates/main/app/update-v2.json || true)
+            MVC=$(printf '%s' "$MANIFEST" | python3 -c 'import json,sys;print(int(json.load(sys.stdin)["version_code"]))' 2>/dev/null || true)
+            ASSETS=$(gh release view "$TAG" --json isDraft,assets -q 'select(.isDraft | not) | .assets[].name' 2>/dev/null || true)
+            MISSING=""
+            for ABI in arm64-v8a armeabi-v7a x86_64; do
+              grep -qxF "tiho-browser-$VN-$ABI.apk" <<< "$ASSETS" || MISSING="$MISSING release:$ABI"
+            done
+            # An unreadable manifest is not treated as missing (network hiccup); the Release check still applies.
+            if [ -n "$MVC" ] && [ "$MVC" -lt "$VC" ]; then MISSING="$MISSING manifest:$MVC<$VC"; fi
+            # Don't race a build.yml run that is already building/publishing (e.g. a manual tag push).
+            BUSY=$(gh run list --workflow build.yml --limit 20 --json status -q '[.[] | select(.status != "completed")] | length' || echo 1)
+            if [ -n "$MISSING" ] && [ "$BUSY" = "0" ]; then
+              echo "::warning::$TAG is not fully published ($MISSING): rebuilding and publishing the existing tag"
+              # The tag normally exists already; create it at main's tip only if it is missing (never moved or duplicated).
+              git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null || { git tag "$TAG" && git push origin "refs/tags/$TAG"; }
+              { echo "bump=true"; echo "tag=$TAG"; echo "refresh=false"; } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ -n "$MISSING" ]; then echo "$TAG not fully published ($MISSING), but a build.yml run is in progress: leaving it to that run"; else echo "$TAG is published (Release + manifest $MVC)"; fi
             echo "bump=false" >> "$GITHUB_OUTPUT"
-            EXP=$(curl -fsSL https://raw.githubusercontent.com/ivanivorontsov-sudo/tiho-updates/main/app/update-v2.json | python3 -c 'import json,sys;print(json.load(sys.stdin)["expires"])' || echo 0)
+            EXP=$(printf '%s' "$MANIFEST" | python3 -c 'import json,sys;print(json.load(sys.stdin)["expires"])' 2>/dev/null || echo 0)
             LEFT=$(( (EXP - $(date +%s)) / 86400 ))
             echo "update-v2.json expires in $LEFT days"
             if [ "$LEFT" -lt 15 ]; then echo "refresh=true" >> "$GITHUB_OUTPUT"; else echo "refresh=false" >> "$GITHUB_OUTPUT"; fi
