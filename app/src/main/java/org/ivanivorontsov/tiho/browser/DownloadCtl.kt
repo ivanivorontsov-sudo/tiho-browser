@@ -27,7 +27,7 @@ class DownloadCtl(private val b: Browser) {
             }
             if (name.isNullOrBlank()) name = try { Uri.parse(uri).lastPathSegment } catch (_: Exception) { null }
             if (name.isNullOrBlank() || uri.startsWith("blob:") || uri.startsWith("data:")) name = name?.takeIf { it.contains('.') } ?: ("download" + extFor(mime))
-            return name!!.replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim('.', ' ').take(120).ifEmpty { "download" }
+            return org.ivanivorontsov.tiho.security.SchemePolicy.normalize(name!!).replace(Regex("[\\\\/:*?\"<>|\\u0000-\\u001f]"), "_").trim('.', ' ').take(120).ifEmpty { "download" }
         }
         private fun extFor(mime: String?) = when (mime?.substringBefore(';')?.trim()) {
             "application/pdf" -> ".pdf"; "image/png" -> ".png"; "image/jpeg" -> ".jpg"; "text/plain" -> ".txt"
@@ -64,7 +64,7 @@ class DownloadCtl(private val b: Browser) {
                 out.use { o -> body.use { it.copyTo(o, 1 shl 16) } }
                 uri?.let { finish(it) }
                 b.main.post {
-                    b.app.downloads.add(DownloadItem(System.currentTimeMillis(), name, r.uri.take(500), System.currentTimeMillis(), uri?.toString()))
+                    if (!tab.incognito) b.app.downloads.add(DownloadItem(System.currentTimeMillis(), name, r.uri.take(500), System.currentTimeMillis(), uri?.toString()))
                     b.snack("Скачано: $name", "Открыть") { b.openDownload(name, uri?.toString(), mime) }
                 }
             } catch (e: Exception) {

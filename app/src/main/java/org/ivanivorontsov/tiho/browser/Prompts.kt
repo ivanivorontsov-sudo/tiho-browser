@@ -39,7 +39,12 @@ class Prompts(private val b: Browser) {
             val onlyPassword = p.authOptions.flags and PromptDelegate.AuthPrompt.AuthOptions.Flags.ONLY_PASSWORD != 0
             val fields = if (onlyPassword) listOf(UiDialog.Field("Пароль", "", true))
             else listOf(UiDialog.Field("Имя пользователя", p.authOptions.username ?: ""), UiDialog.Field("Пароль", "", true))
-            b.show(UiDialog.Input("Вход: ${site(tab)}", p.message ?: "", fields) { v ->
+            // Show the origin that actually asks for the password (may be a third-party iframe / subresource), not the tab's site.
+            val asker = try { Homograph.display(Uri.parse(p.authOptions.uri).host) } catch (_: Exception) { null }
+            val tabSite = site(tab)
+            val title = if (asker != null && asker != tabSite) "Вход: $asker (на странице $tabSite)" else "Вход: ${asker ?: tabSite}"
+            val note = if (asker != null && asker != tabSite) "⚠ Пароль запрашивает другой сайт — $asker, а не $tabSite.\n\n" else ""
+            b.show(UiDialog.Input(title, note + (p.message ?: ""), fields) { v ->
                 r.complete(when { v == null -> p.dismiss(); onlyPassword -> p.confirm(v[0]); else -> p.confirm(v[0], v[1]) })
             })
             return r

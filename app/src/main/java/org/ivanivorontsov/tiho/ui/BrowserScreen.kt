@@ -58,6 +58,7 @@ fun BrowserApp(b: Browser) {
                 Screen.USERSCRIPTS -> UserscriptsScreen(b)
                 Screen.BOOKMARKS -> BookmarksScreen(b)
                 Screen.DOWNLOADS -> DownloadsScreen(b)
+                Screen.HISTORY -> HistoryScreen(b)
                 Screen.UPDATES -> UpdatesScreen(b)
                 Screen.SECURITY -> SecurityScreen(b)
                 Screen.ABOUT -> AboutScreen(b)
@@ -177,6 +178,7 @@ private fun MainMenu(b: Browser, tab: Tab, open: Boolean, close: () -> Unit) {
         DropdownMenuItem({ Text("Дополнения") }, { close(); b.screen.value = Screen.ADDONS }, leadingIcon = { Icon(Icons.Outlined.Extension, null) })
         DropdownMenuItem({ Text("Пользовательские скрипты") }, { close(); b.screen.value = Screen.USERSCRIPTS }, leadingIcon = { Icon(Icons.Outlined.Code, null) })
         DropdownMenuItem({ Text("Закладки") }, { close(); b.screen.value = Screen.BOOKMARKS }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) })
+        DropdownMenuItem({ Text("История") }, { close(); b.screen.value = Screen.HISTORY }, leadingIcon = { Icon(Icons.Outlined.History, null) })
         DropdownMenuItem({ Text("Загрузки") }, { close(); b.screen.value = Screen.DOWNLOADS }, leadingIcon = { Icon(Icons.Outlined.Download, null) })
         DropdownMenuItem({ Text("Найти на странице") }, { close(); findOpen.value = true }, leadingIcon = { Icon(Icons.Outlined.FindInPage, null) })
         DropdownMenuItem({ Text("Версия для ПК") }, { close(); tab.setDesktop(!tab.desktop.value) }, leadingIcon = { Icon(Icons.Outlined.Computer, null) },

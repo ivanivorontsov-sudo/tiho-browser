@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import org.ivanivorontsov.tiho.ext.ScriptTokens
 import org.ivanivorontsov.tiho.gecko.AddonPolicy
 import org.ivanivorontsov.tiho.gecko.Engine
 import org.ivanivorontsov.tiho.security.Homograph
@@ -109,10 +110,11 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
             override fun onMessage(nativeApp: String, message: Any, sender: WebExtension.MessageSender): GeckoResult<Any>? = guard("ext message", null) {
                 val m = message as? JSONObject ?: return@guard null
                 when (m.optString("type")) {
-                    "pay" -> onPaySignals(m)
+                    "pay" -> if (ScriptTokens.check(ScriptTokens.PAY_ID, m.optString("tok", ""))) onPaySignals(m)
                     "gm" -> {
                         val id = m.optString("id"); val key = m.optString("key")
-                        if (app.extensions.find(id) != null && !incognito) {
+                        // The token proves the message comes from that script's own wrapper (no cross-script writes).
+                        if (app.extensions.find(id) != null && !incognito && ScriptTokens.check(id, m.optString("tok", ""))) {
                             app.extensions.gmSet(id, key, if (m.isNull("value")) null else m.optString("value"))
                             app.addons.schedulePush()
                         }
@@ -165,6 +167,8 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
             paymentContext.value = host != null && app.payments.isPayment(host)
             if (payHint.value?.host != host) payHint.value = null
             blocked.intValue = 0; blockedHosts.clear()
+            // History: opt-in, never for private or «Банк» tabs.
+            if (!incognito && !payment && app.prefs.historyEnabled && s.isNotEmpty()) app.history.record(s, title.value)
             browser.onTabStateChanged(this@Tab)
         }
         override fun onCanGoBack(session: GeckoSession, v: Boolean) { canBack.value = v }
@@ -231,7 +235,10 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
     }
 
     private inner class Content : GeckoSession.ContentDelegate {
-        override fun onTitleChange(session: GeckoSession, t: String?) { title.value = t ?: "" }
+        override fun onTitleChange(session: GeckoSession, t: String?) {
+            title.value = t ?: ""
+            if (!incognito && !payment && app.prefs.historyEnabled && !t.isNullOrBlank()) app.history.updateTitle(url.value, t)
+        }
         override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) { browser.fullscreen.value = fullScreen }
         override fun onCloseRequest(session: GeckoSession) = guard("onCloseRequest") { browser.main.post { guard("close") { browser.closeTab(this@Tab) } } }
         override fun onContextMenu(session: GeckoSession, x: Int, y: Int, e: GeckoSession.ContentDelegate.ContextElement) = guard("onContextMenu") { browser.contextMenu(this@Tab, e) }

@@ -10,7 +10,19 @@ class MinisignTest {
 
     @Test fun validPrehashedAndLegacy() {
         assertEquals("tc 1", Minisign.verify(data, a.sign(data, "tc 1"), listOf(a.pub)).trustedComment)
-        assertEquals("tc 2", Minisign.verify(data, a.sign(data, "tc 2", prehash = false), listOf(b.pub, a.pub)).trustedComment)
+        assertEquals("tc 2", Minisign.verify(data, a.sign(data, "tc 2", prehash = false), listOf(b.pub, a.pub), allowLegacy = true).trustedComment)
+    }
+
+    @Test fun legacyRejectedByDefault() {
+        assertThrows(Minisign.InvalidSignature::class.java) { Minisign.verify(data, a.sign(data, "tc 2", prehash = false), listOf(a.pub)) }
+    }
+
+    @Test fun strictTrustedComments() {
+        assertEquals(Minisign.Comment("content", 1, "manifest.json"), Minisign.parseComment("tiho-content v1 timestamp:1790841367 file:manifest.json"))
+        assertEquals(Minisign.Comment("app", 7, "update-v2.json"), Minisign.parseComment("tiho-app 7 2.0.2 timestamp:1791367995 file:update-v2.json"))
+        assertEquals(null, Minisign.parseComment("x tiho-app 7 2.0.2 timestamp:1"))
+        assertEquals(null, Minisign.parseComment("tiho-app 7 2.0.2 timestamp:1 file:a b"))
+        assertEquals(null, Minisign.parseComment("tiho-content v12 extra timestamp:1"))
     }
 
     @Test fun backupKeyAccepted() {

@@ -66,7 +66,8 @@ data class AppUpdateInfo(
     }
 }
 
-class AppUpdateVerifier(private val keys: List<Minisign.PublicKey>, private val now: () -> Long = { System.currentTimeMillis() / 1000 }) {
+class AppUpdateVerifier(private val keys: List<Minisign.PublicKey>, private val now: () -> Long = { System.currentTimeMillis() / 1000 },
+                        private val expectedFile: String = "update-v2.json") {
     sealed class Check {
         data class Available(val info: AppUpdateInfo) : Check()
         data class UpToDate(val info: AppUpdateInfo) : Check()
@@ -76,7 +77,9 @@ class AppUpdateVerifier(private val keys: List<Minisign.PublicKey>, private val 
     fun verify(bytes: ByteArray, sig: String, installedVersionCode: Int, expectedCertSha256: String?): Check {
         val v = try { Minisign.verify(bytes, sig, keys) } catch (e: SecurityException) { throw PackException("подпись update.json не прошла проверку: ${e.message}") }
         val info = AppUpdateInfo.parse(String(bytes, Charsets.UTF_8))
-        if (!v.trustedComment.contains("tiho-app ${info.versionCode} ")) throw PackException("подписанный комментарий не совпадает с версией")
+        val tc = Minisign.parseComment(v.trustedComment)
+        if (tc == null || tc.kind != "app" || tc.version != info.versionCode.toLong() || (tc.file != null && tc.file != expectedFile))
+            throw PackException("подписанный комментарий не совпадает с версией")
         if (info.expires <= now()) throw PackException("срок действия update.json истёк (возможна атака повтором)")
         if (expectedCertSha256 != null && info.certSha256.isNotEmpty() && info.certSha256 != expectedCertSha256.uppercase())
             throw PackException("APK подписан другим ключом")

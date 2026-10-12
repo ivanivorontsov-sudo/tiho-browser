@@ -63,7 +63,9 @@ class ContentPackVerifier(private val keys: List<Minisign.PublicKey>, private va
         val v = try { Minisign.verify(bytes, sig, keys) } catch (e: SecurityException) { throw PackException("подпись не прошла проверку: ${e.message}") }
         val m = PackManifest.parse(String(bytes, Charsets.UTF_8))
         // The trusted comment is signed too: it must name the same version (defence against a swapped manifest).
-        if (!v.trustedComment.contains("tiho-content v${m.version} ")) throw PackException("подписанный комментарий не совпадает с версией")
+        val tc = Minisign.parseComment(v.trustedComment)
+        if (tc == null || tc.kind != "content" || tc.version != m.version || (tc.file != null && tc.file != "manifest.json"))
+            throw PackException("подписанный комментарий не совпадает с версией")
         if (m.version <= highWater) throw PackException(if (m.version == highWater) "уже установлена" else "откат на старую версию ${m.version} (есть $highWater) отклонён")
         if (m.expires <= now()) throw PackException("срок действия пакета истёк")
         if (m.minAppVersion > appVersionCode) throw PackException("нужна более новая версия приложения")

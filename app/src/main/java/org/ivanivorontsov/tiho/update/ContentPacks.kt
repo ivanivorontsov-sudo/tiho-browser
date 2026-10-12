@@ -39,7 +39,13 @@ class ContentPacks(private val app: TihoApp) {
             store.current.deleteRecursively(); null
         }
         applyData()
+        manifest?.let { m ->
+            if (m.expires <= System.currentTimeMillis() / 1000) prefs.contentStatus = "⚠ Списки защиты устарели (срок подписи истёк): обновления не приходят — проверьте сеть или обновите вручную"
+        }
     }
+
+    /** True when the installed signed pack is past its expiry (possible freeze attack / blocked update server). */
+    val expired: Boolean get() = manifest?.let { it.expires <= System.currentTimeMillis() / 1000 } ?: false
 
     private fun applyData() {
         val m = manifest ?: return

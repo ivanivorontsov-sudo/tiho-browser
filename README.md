@@ -4,7 +4,7 @@ Kotlin + Jetpack Compose (Material 3), интерфейс на русском. �
 с maven.mozilla.org, сам Gecko не компилируется (версия в `gecko.properties`). Есть настоящие **WebExtensions** с addons.mozilla.org.
 Блокировщик по умолчанию — **uBlock Origin**, предустановлен подписанный AMO-xpi. Без аналитики, телеметрии, Google Play Services и аккаунтов.
 
-* Пакет `org.ivanivorontsov.tiho`, minSdk 26, compileSdk 37.1, R8. Подпись — ключ `privbrowser`, сертификат `F1:72:85:…:D6:D0`.
+* Пакет `org.ivanivorontsov.tiho`, minSdk 26, compileSdk 37.1, R8. Подпись — ключ `privbrowser`, сертификат `CA:8B:DA:…:AB:DD` (новый ключ с 2.0.3; 2.0.2 и раньше — `F1:72:85:…:D6:D0`, поверх не обновляются).
   Тот же ключ, что у 1.x, поэтому 2.0 ставится поверх 1.1.x.
 * ABI: отдельные APK для **arm64-v8a** и **armeabi-v7a** (~95 МБ: библиотеки Gecko), плюс x86_64 для эмулятора. Публикуются через GitHub Release.
 * 1.x (System WebView + adblock-rust) лежит в ветке/тегах `v1.1.x`. adblock-rust удалён: его заменил uBlock Origin внутри Gecko.

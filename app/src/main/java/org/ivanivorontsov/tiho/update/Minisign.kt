@@ -66,8 +66,10 @@ object Minisign {
      * Verifies [data] against [sigText] with one of the pinned [keys] (matched by key ID).
      * Both the data signature and the trusted-comment signature must be valid.
      */
-    fun verify(data: ByteArray, sigText: String, keys: List<PublicKey>): Verified {
+    fun verify(data: ByteArray, sigText: String, keys: List<PublicKey>, allowLegacy: Boolean = false): Verified {
         val sig = parseSignature(sigText)
+        // Legacy (non-prehashed "Ed") signatures are never produced by tools/tiho-publish.py: refuse them.
+        if (sig.algorithm == "Ed" && !allowLegacy) throw InvalidSignature("legacy Ed signatures are not accepted")
         val key = keys.firstOrNull { it.keyId.contentEquals(sig.keyId) }
             ?: throw InvalidSignature("signed by an unknown key")
         val msg = if (sig.algorithm == "ED") blake2b512(data) else data
@@ -75,6 +77,16 @@ object Minisign {
         val tc = sig.trustedComment.toByteArray(Charsets.UTF_8)
         if (!ed25519Verify(key.key, sig.signature + tc, sig.globalSignature)) throw InvalidSignature("trusted comment signature does not match")
         return Verified(key, sig.trustedComment)
+    }
+
+    /** Strictly parsed trusted comment: "tiho-content v<N> timestamp:<T>[ file:<F>]" / "tiho-app <N> <name> timestamp:<T>[ file:<F>]". */
+    data class Comment(val kind: String, val version: Long, val file: String?)
+    private val CONTENT_TC = Regex("^tiho-content v(\\d+) timestamp:\\d+(?: file:(\\S+))?$")
+    private val APP_TC = Regex("^tiho-app (\\d+) \\S+ timestamp:\\d+(?: file:(\\S+))?$")
+    fun parseComment(tc: String): Comment? {
+        CONTENT_TC.matchEntire(tc)?.let { return Comment("content", it.groupValues[1].toLong(), it.groupValues[2].ifEmpty { null }) }
+        APP_TC.matchEntire(tc)?.let { return Comment("app", it.groupValues[1].toLong(), it.groupValues[2].ifEmpty { null }) }
+        return null
     }
 
     fun sha256Hex(data: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }

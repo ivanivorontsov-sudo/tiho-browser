@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
 
 /** Tabs, navigation policy and UI state. Lives as long as the activity. */
 class Browser(val app: TihoApp) {
-    enum class Screen { BROWSER, TABS, SETTINGS, ADDONS, AMO, USERSCRIPTS, BOOKMARKS, DOWNLOADS, UPDATES, SECURITY, ABOUT }
+    enum class Screen { BROWSER, TABS, SETTINGS, ADDONS, AMO, USERSCRIPTS, BOOKMARKS, DOWNLOADS, HISTORY, UPDATES, SECURITY, ABOUT }
 
     val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
