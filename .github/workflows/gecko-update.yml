@@ -113,10 +113,9 @@ jobs:
           printf '%s\n' "$CI_KEY" > "$K/tiho-content-ci.key"; printf '%s\n' "$CI_KEY_ID" > "$K/tiho-content-ci.key.id"
           mkdir -p ~/.ssh && printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/tiho_updates && chmod 600 ~/.ssh/tiho_updates
           # Pinned GitHub host keys (https://api.github.com/meta) instead of trust-on-first-use ssh-keyscan
-          cat >> ~/.ssh/known_hosts <<'KH'
-github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
-github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
-KH
+          printf '%s\n' \
+            'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
+            'github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=' >> ~/.ssh/known_hosts
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/tiho_updates -o IdentitiesOnly=yes"
           git clone --depth 1 git@github.com:ivanivorontsov-sudo/tiho-updates.git upd
           python3 tools/tiho-publish.py resign --dir "$K" --key ci --file upd/app/update-v2.json --days 45
