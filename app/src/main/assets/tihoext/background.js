@@ -11,6 +11,12 @@ async function unregisterAll() {
   for (const r of old) { try { await r.unregister(); } catch (e) {} }
 }
 
+let paySrc = null;
+async function payDetectSource() {
+  if (paySrc === null) paySrc = await (await fetch(browser.runtime.getURL("paydetect.js"))).text();
+  return paySrc;
+}
+
 async function apply(c) {
   cfg = c;
   await unregisterAll();
@@ -19,7 +25,8 @@ async function apply(c) {
     try {
       const opts = {
         matches: s.matches && s.matches.length ? s.matches : ["*://*/*"],
-        js: [{ code: s.code.replace("/*__TIHO_VALUES__*/{}", JSON.stringify(s.values || {})) }],
+        // Function replacement: a string replacement would interpret $&, $', $` inside stored GM values.
+        js: [{ code: s.code.replace("/*__TIHO_VALUES__*/{}", () => JSON.stringify(s.values || {})) }],
         runAt: s.runAt || "document_end",
         allFrames: !!s.allFrames,
       };
@@ -30,7 +37,9 @@ async function apply(c) {
   if (c.payDetect) {
     try {
       registered.push(await browser.contentScripts.register({
-        matches: ["https://*/*"], js: [{ file: "paydetect.js" }], runAt: "document_idle", allFrames: true,
+        matches: ["https://*/*"], runAt: "document_idle", allFrames: true,
+        // The token lives only inside this closure; paydetect messages without it are dropped by the app.
+        js: [{ code: (c.prelude || "") + "\n(function(){const __payTok=" + JSON.stringify(c.payToken || "") + ";\n" + (await payDetectSource()) + "\n})();" }],
         excludeMatches: c.paymentExclude && c.paymentExclude.length ? c.paymentExclude : undefined,
       }));
     } catch (e) { errors.push("paydetect: " + e); }

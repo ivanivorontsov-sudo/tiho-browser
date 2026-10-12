@@ -55,6 +55,9 @@ fun SettingsScreen(b: Browser) {
         item { SwitchRow("Удалять данные сайтов при выходе", "Cookie, хранилища, кэш, разрешения (кнопка «Выход» или при следующем запуске)", p.clearOnExit) { p.clearOnExit = it } }
         item { SwitchRow("Приватные вкладки по умолчанию", "Новые вкладки — приватные сессии Gecko", p.incognitoDefault) { p.incognitoDefault = it } }
         item { SwitchRow("Запретить снимки экрана везде", "FLAG_SECURE для всего браузера (во вкладках «Банк» — всегда)", p.flagSecure) { p.flagSecure = it; b.updateWindowSecurity() } }
+        item { SwitchRow("Вести историю посещений", "Выключено по умолчанию. В приватных вкладках и вкладках «Банк» история не записывается никогда", p.historyEnabled) { p.historyEnabled = it } }
+        if (p.historyEnabled) item { ChoiceRow("Автоудаление истории", listOf(0 to "Не удалять", 1 to "Старше 1 дня", 7 to "Старше 7 дней", 30 to "Старше 30 дней", 90 to "Старше 90 дней"), p.historyDays) { p.historyDays = it; b.app.history.prune(it) } }
+        item { NavRow("История", "${b.app.history.items.size} записей", Icons.Outlined.History) { b.backTo(Screen.HISTORY) } }
         item { NavRow("Удалить данные сайтов сейчас", icon = Icons.Outlined.LocalFireDepartment) { b.clearNow() } }
 
         item { SectionHeader("Разделы") }
@@ -267,6 +270,34 @@ fun DownloadsScreen(b: Browser) {
                 modifier = Modifier.clickable { b.openDownload(d.name, d.uri, null) })
         }
     }
+}
+
+@Composable
+fun HistoryScreen(b: Browser) {
+    val h = b.app.history
+    var q by remember { mutableStateOf("") }
+    var confirm by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { h.prune(b.prefs.historyDays) }
+    val list = remember(q, h.items.size, h.items.firstOrNull()) { h.search(q) }
+    val fmt = remember { java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", java.util.Locale("ru")) }
+    SubScreen("История", { b.backTo() }, actions = { TextButton(enabled = h.items.isNotEmpty(), onClick = { confirm = true }) { Text("Очистить") } }) {
+        if (!b.prefs.historyEnabled) item { Text("Запись истории выключена (Настройки → Данные). Старые записи можно просмотреть или удалить.", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall) }
+        item {
+            OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), singleLine = true,
+                placeholder = { Text("Поиск по истории") }, leadingIcon = { Icon(Icons.Outlined.Search, null) })
+        }
+        if (list.isEmpty()) item { Text(if (q.isBlank()) "История пуста" else "Ничего не найдено", Modifier.padding(16.dp)) }
+        items(list, key = { it.id }) { e ->
+            ListItem(headlineContent = { Text(e.title.ifBlank { e.url }, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                supportingContent = { Text(fmt.format(java.util.Date(e.time)) + " · " + e.url.take(90), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) },
+                trailingContent = { IconButton(onClick = { h.remove(e) }) { Icon(Icons.Outlined.Delete, "Удалить запись") } },
+                modifier = Modifier.clickable { b.backTo(); b.navigate(e.url) })
+        }
+    }
+    if (confirm) AlertDialog(onDismissRequest = { confirm = false },
+        title = { Text("Очистить историю?") }, text = { Text("Все ${h.items.size} записей будут удалены без возможности восстановления.") },
+        confirmButton = { TextButton(onClick = { h.clear(); confirm = false }) { Text("Очистить") } },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Отмена") } })
 }
 
 @Composable

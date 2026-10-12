@@ -18,6 +18,17 @@ object UserScriptJs {
         return if (m.all { MATCH_RE.matches(it) }) m else null
     }
 
+    /**
+     * Runs before any user code in the shared content-script sandbox (every wrapper starts with it, so the very first
+     * code executed is always this): pins the genuine sendNativeMessage so a later script cannot hook it to steal tokens.
+     */
+    val PRELUDE = """var __tihoSnm=(function(){try{if(typeof __tihoSnm==="function")return __tihoSnm;}catch(e){}
+const r=browser.runtime;const f=r.sendNativeMessage.bind(r);
+try{Object.defineProperty(globalThis,"__tihoSnm",{value:f,writable:false,configurable:false});}catch(e){}
+try{Object.defineProperty(r,"sendNativeMessage",{value:r.sendNativeMessage,writable:false,configurable:false});}catch(e){}
+try{Object.defineProperty(globalThis,"browser",{value:browser,writable:false,configurable:false});}catch(e){}
+return f;})();""".trimIndent()
+
     fun runAt(r: String) = when (r) { "document-start" -> "document_start"; "document-idle" -> "document_idle"; else -> "document_end" }
 
     /** Exclude patterns covering each payment base domain and all its subdomains. */
@@ -29,6 +40,7 @@ object UserScriptJs {
         val info = JSONObject().put("script", JSONObject().put("name", s.name).put("version", s.version).put("namespace", s.namespace)
             .put("description", s.description)).put("scriptHandler", "Тихо").put("version", "2.0").toString()
         return """
+$PRELUDE
 (function(){"use strict";
 $guardJs
 if(!${trusted}&&__tihoPay)return;
@@ -36,7 +48,8 @@ const __u=location.href;const __inc=$inc,__exc=$exc;
 if(!__inc.some(r=>new RegExp(r).test(__u))||__exc.some(r=>new RegExp(r).test(__u)))return;
 ${if (s.noframes) "if(window.top!==window)return;" else ""}
 const __id=${JSONObject.quote(s.id)};const __vals=/*__TIHO_VALUES__*/{};
-const __send=(m)=>{try{browser.runtime.sendNativeMessage("tiho",m).catch(()=>{});}catch(e){}};
+const __tok=${JSONObject.quote(ScriptTokens.tokenFor(s.id))};const __snm=__tihoSnm;
+const __send=(m)=>{try{m.tok=__tok;__snm("tiho",m).catch(()=>{});}catch(e){}};
 const GM_info=$info;
 function GM_getValue(k,d){return Object.prototype.hasOwnProperty.call(__vals,k)?JSON.parse(__vals[k]):d;}
 function GM_setValue(k,v){const s=JSON.stringify(v);__vals[k]=s;__send({type:"gm",id:__id,key:String(k),value:s});}
@@ -68,5 +81,6 @@ ${s.code}
         }
         return JSONObject().put("type", "config").put("scripts", arr)
             .put("paymentExclude", JSONArray(paymentExcludes(paymentDomains))).put("payDetect", payDetect)
+            .put("prelude", PRELUDE).put("payToken", ScriptTokens.tokenFor(ScriptTokens.PAY_ID))
     }
 }

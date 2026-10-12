@@ -24,5 +24,5 @@ object TrustedKeys {
     const val CONTENT_URL = BASE_URL + "content/"
     const val UPDATE_URL = BASE_URL + "app/update-v2.json"
     /** SHA-256 of the APK signing certificate (privbrowser, RSA-4096). */
-    const val APK_CERT_SHA256 = "F1:72:85:19:60:CF:08:63:34:B7:14:91:FB:DC:48:89:86:1E:1E:EB:60:7E:4F:2D:40:6C:BD:86:FF:90:D6:D0"
+    const val APK_CERT_SHA256 = "CA:8B:DA:71:17:F3:99:86:2F:C7:E5:1D:F6:B7:BA:25:83:95:DD:CB:86:56:4D:D0:E2:5E:19:16:88:3B:AB:DD"
 }

@@ -29,6 +29,7 @@ class TihoApp : Application() {
     lateinit var extensions: Extensions
     lateinit var bookmarks: Bookmarks
     lateinit var downloads: Downloads
+    lateinit var history: org.ivanivorontsov.tiho.data.History
     lateinit var engine: Engine
     lateinit var addons: Addons
     var browser: Browser? = null
@@ -50,6 +51,7 @@ class TihoApp : Application() {
         extensions.onChanged = { if (this::addons.isInitialized) addons.pushConfig() }
         bookmarks = Bookmarks(this)
         downloads = Downloads(this)
+        history = org.ivanivorontsov.tiho.data.History(filesDir).also { it.prune(prefs.historyDays) }
         engine = Engine(this)
         addons = Addons(this)
         engine.runtimeAddons = { addons }

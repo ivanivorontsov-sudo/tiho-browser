@@ -61,6 +61,10 @@ class Prefs(context: Context) {
 
     // --- Data / private mode
     var clearOnExit by B("clear_on_exit", true)
+    /** Browsing history: off by default; never recorded in private / «Банк» tabs. */
+    var historyEnabled by B("history_enabled", false)
+    /** Auto-delete history older than N days (0 = never). */
+    var historyDays by I("history_days", 0)
     var incognitoDefault by B("incognito_default", false)
 
     // --- Gecko privacy (Arkenfox / IronFox-style prefs)

@@ -97,9 +97,23 @@ data class UserScript(
             return "^$scheme://$host$path$"
         }
 
+        /** Never matches (valid in Java and JS). */
+        const val NEVER = "(?!)"
+        private val NESTED_QUANT = Regex("\\([^()]*[+*}][^()]*\\)\\s*[+*{]")
+        private val BACKREF = Regex("\\\\[1-9]")
+
+        /**
+         * A userscript's own /regex/ runs on every page load: refuse patterns that can backtrack catastrophically
+         * (nested quantifiers like (a+)+, back-references) or are absurdly long. A refused pattern simply never matches.
+         */
+        fun safeUserRegex(r: String): String {
+            if (r.length > 300 || NESTED_QUANT.containsMatchIn(r) || BACKREF.containsMatchIn(r)) return NEVER
+            return try { Regex(r); r } catch (_: Exception) { NEVER }
+        }
+
         /** @include glob (or /regex/). */
         fun globToRegex(g: String): String {
-            if (g.length > 2 && g.startsWith("/") && g.endsWith("/")) return g.substring(1, g.length - 1)
+            if (g.length > 2 && g.startsWith("/") && g.endsWith("/")) return safeUserRegex(g.substring(1, g.length - 1))
             if (g == "*") return "^"
             return "^" + g.split("*").joinToString(".*") { esc(it) }.replace("\\.tld", "\\.[a-z.]{2,6}") + "$"
         }

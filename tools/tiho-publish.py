@@ -155,7 +155,7 @@ p.add_argument("--min-webview", type=int, default=0); p.add_argument("--key", de
 u = sp.add_parser("update"); u.add_argument("--dir", required=True); u.add_argument("--repo", required=True); u.add_argument("--apk", required=True)
 u.add_argument("--version-code", type=int, required=True); u.add_argument("--version-name", required=True); u.add_argument("--min-version-code", type=int, default=1)
 u.add_argument("--url", required=True); u.add_argument("--days", type=int, default=120); u.add_argument("--notes", default="")
-u.add_argument("--cert", default="F1:72:85:19:60:CF:08:63:34:B7:14:91:FB:DC:48:89:86:1E:1E:EB:60:7E:4F:2D:40:6C:BD:86:FF:90:D6:D0")
+u.add_argument("--cert", default="CA:8B:DA:71:17:F3:99:86:2F:C7:E5:1D:F6:B7:BA:25:83:95:DD:CB:86:56:4D:D0:E2:5E:19:16:88:3B:AB:DD")
 u.add_argument("--key", default="primary"); u.add_argument("--out", default="update.json")
 u.add_argument("--abi", action="append", default=[], help="abi=path=url (repeatable)"); u.add_argument("--gecko", default="")
 u.set_defaults(f=update)

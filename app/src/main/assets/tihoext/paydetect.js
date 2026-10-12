@@ -31,7 +31,7 @@
     const sig = scan(); const k = sig.join(",");
     if (sig.length && k !== sent) {
       sent = k;
-      browser.runtime.sendNativeMessage("tiho", { type: "pay", url: location.href, top: window === window.top, signals: sig }).catch(() => {});
+      (typeof __tihoSnm === "function" ? __tihoSnm : browser.runtime.sendNativeMessage.bind(browser.runtime))("tiho", { type: "pay", tok: typeof __payTok === "string" ? __payTok : "", url: location.href, top: window === window.top, signals: sig }).catch(() => {});
     }
   }
   setTimeout(check, 800); setTimeout(check, 3000);
