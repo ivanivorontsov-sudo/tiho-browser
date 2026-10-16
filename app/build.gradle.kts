@@ -28,7 +28,7 @@ val appVersionName: String = geckoProps.getProperty("versionName")
 android {
     namespace = "org.ivanivorontsov.tiho"
     // GeckoView 157 AAR metadata requires compiling against API 37.1
-    compileSdk { version = release(37) { minorApiLevel = 1 } }
+    compileSdk { version = release(37) { minorApiLevel = 2 } }
 
     defaultConfig {
         applicationId = "org.ivanivorontsov.tiho"
