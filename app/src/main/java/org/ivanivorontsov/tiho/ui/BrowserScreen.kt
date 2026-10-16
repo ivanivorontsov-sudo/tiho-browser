@@ -62,6 +62,7 @@ fun BrowserApp(b: Browser) {
                 Screen.UPDATES -> UpdatesScreen(b)
                 Screen.SECURITY -> SecurityScreen(b)
                 Screen.ABOUT -> AboutScreen(b)
+                Screen.LICENSES -> LicensesScreen(b)
                 Screen.BROWSER -> {}
             }
         }

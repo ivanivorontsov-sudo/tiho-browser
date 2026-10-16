@@ -27,7 +27,7 @@ import java.util.concurrent.Executors
 
 /** Tabs, navigation policy and UI state. Lives as long as the activity. */
 class Browser(val app: TihoApp) {
-    enum class Screen { BROWSER, TABS, SETTINGS, ADDONS, AMO, USERSCRIPTS, BOOKMARKS, DOWNLOADS, HISTORY, UPDATES, SECURITY, ABOUT }
+    enum class Screen { BROWSER, TABS, SETTINGS, ADDONS, AMO, USERSCRIPTS, BOOKMARKS, DOWNLOADS, HISTORY, UPDATES, SECURITY, ABOUT, LICENSES }
 
     val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
@@ -191,7 +191,7 @@ class Browser(val app: TihoApp) {
     /** Back: closes overlays first, then history, then the tab (if opened as a popup). */
     fun back(): Boolean {
         if (popup.value != null) { closePopup(); return true }
-        if (screen.value != Screen.BROWSER) { screen.value = if (screen.value == Screen.AMO) Screen.ADDONS else Screen.BROWSER; return true }
+        if (screen.value != Screen.BROWSER) { screen.value = when (screen.value) { Screen.AMO -> Screen.ADDONS; Screen.LICENSES -> Screen.ABOUT; else -> Screen.BROWSER }; return true }
         if (fullscreen.value) { current.value?.session?.exitFullScreen(); return true }
         val t = current.value ?: return false
         if (t.warning.value != null) { t.warning.value = null; return true }

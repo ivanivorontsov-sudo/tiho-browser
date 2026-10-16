@@ -33,7 +33,7 @@ addons.mozilla.org. Есть включение/выключение, удале
 - защита от фингерпринтинга: FPP (`privacy.fingerprintingProtection`) по умолчанию, RFP (`privacy.resistFingerprinting`) — опция.
   Для платёжных доменов действуют `resistFingerprinting.exemptedDomains` и `fingerprintingProtection.granularOverrides` (`-AllTargets`);
 - HTTPS-only;
-- DoH — опция: Mozilla TRR (Cloudflare), Quad9, Mullvad, AdGuard; режим «только DoH» или «DoH сначала»;
+- DoH — опция: Mozilla TRR (Cloudflare), Quad9, AdGuard; режим «только DoH» или «DoH сначала»;
 - WebRTC: «без утечки IP» по умолчанию (`ice.default_address_only`, `no_host`, `proxy_only_if_behind_proxy`), также «выключен» или «разрешён»;
 - выключены телеметрия, health report, Normandy/исследования, crash reporter, удалённые эксперименты, телеметрия подтверждения TRR,
   предзагрузка (prefetch/dns-prefetch/preconnect/speculative), удалённая проверка загрузок Safe Browsing.

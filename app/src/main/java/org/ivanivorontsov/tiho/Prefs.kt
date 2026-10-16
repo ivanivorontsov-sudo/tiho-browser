@@ -77,6 +77,7 @@ class Prefs(context: Context) {
     /** 0 off, 1 Mozilla TRR (Cloudflare), 2 Quad9, 3 Mullvad, 4 AdGuard */
     var doh by I("doh_mode", 0)
     var dohStrict by B("doh_strict", false)
+    init { if (doh == 3) doh = 2 }
     var referrerTrim by B("referrer_trim", true)
     var jitOff by B("jit_off", false)
     var drm by B("drm", false)
@@ -135,13 +136,11 @@ class Prefs(context: Context) {
             0 to "Выключен (системный DNS)",
             1 to "Mozilla (Cloudflare)",
             2 to "Quad9 (Швейцария)",
-            3 to "Mullvad DNS",
             4 to "AdGuard DNS (с блокировкой рекламы)",
         )
         fun dohUri(mode: Int): String? = when (mode) {
             1 -> "https://mozilla.cloudflare-dns.com/dns-query"
             2 -> "https://dns.quad9.net/dns-query"
-            3 -> "https://dns.mullvad.net/dns-query"
             4 -> "https://dns.adguard-dns.com/dns-query"
             else -> null
         }

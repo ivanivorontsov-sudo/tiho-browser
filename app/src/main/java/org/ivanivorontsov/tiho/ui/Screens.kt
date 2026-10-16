@@ -40,7 +40,7 @@ fun SettingsScreen(b: Browser) {
 
         item { SectionHeader("Приватность (настройки Gecko в духе Arkenfox / IronFox)") }
         item { SwitchRow("Строгая защита от отслеживания (ETP Strict)", "Трекеры, майнеры, фингерпринтеры, соцсети; полная защита cookie (Total Cookie Protection)", p.etpStrict) { p.etpStrict = it } }
-        item { ChoiceRow("Защита от фингерпринтинга", listOf(0 to "FPP — как в Firefox Strict (совместимо)", 1 to "RFP — как в Tor Browser (максимум, может ломать сайты)"), p.fpMode) { p.fpMode = it } }
+        item { ChoiceRow("Защита от фингерпринтинга", listOf(0 to "FPP — как в Firefox Strict (совместимо)", 1 to "RFP — максимальная защита (может ломать сайты)"), p.fpMode) { p.fpMode = it } }
         item { SwitchRow("Только HTTPS", "HTTP-сайты открываются только после предупреждения Gecko", p.httpsOnly) { p.httpsOnly = it } }
         item { SwitchRow("Global Privacy Control", "Сигнал «не продавать мои данные» (Sec-GPC)", p.gpc) { p.gpc = it } }
         item { ChoiceRow("WebRTC", listOf(0 to "Выключен", 1 to "Без утечки IP (только адрес по умолчанию, без локальных)", 2 to "Разрешён полностью"), p.webrtcMode) { p.webrtcMode = it } }
@@ -65,6 +65,7 @@ fun SettingsScreen(b: Browser) {
         item { NavRow("Дополнения", icon = Icons.Outlined.Extension) { b.backTo(Screen.ADDONS) } }
         item { NavRow("Обновления", "Тихо ${BuildConfig.VERSION_NAME}, GeckoView ${BuildConfig.GECKO_VERSION}", Icons.Outlined.SystemUpdate) { b.backTo(Screen.UPDATES) } }
         item { NavRow("О программе", icon = Icons.Outlined.Info) { b.backTo(Screen.ABOUT) } }
+        item { NavRow("Сторонние компоненты и лицензии", "uBlock Origin, GeckoView, BouncyCastle, списки фильтров", Icons.Outlined.Description) { b.backTo(Screen.LICENSES) } }
     }
 }
 
@@ -360,9 +361,55 @@ fun AboutScreen(b: Browser) {
                 Text("Без аналитики, без Google Play Services. Телеметрия, исследования (Normandy) и отчёты о сбоях Gecko выключены.", style = MaterialTheme.typography.bodySmall)
             }
         }
+        item { NavRow("Сторонние компоненты и лицензии", "uBlock Origin, GeckoView, BouncyCastle, списки фильтров", Icons.Outlined.Description) { b.screen.value = Screen.LICENSES } }
         item { SectionHeader("Действующие настройки Gecko") }
         items(diag.entries.sortedBy { it.key }.map { it.key to it.value }) { (k, v) ->
             Text("$k = $v", Modifier.padding(horizontal = 16.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
         }
+    }
+}
+
+private class ThirdParty(val name: String, val version: String, val author: String, val license: String, val source: String, val asset: String)
+
+private val THIRD_PARTY = listOf(
+    ThirdParty("uBlock Origin", "1.75.0 (подписанный xpi с addons.mozilla.org, без изменений)", "Raymond Hill (gorhill) и участники", "GNU GPL v3", "https://github.com/gorhill/uBlock/tree/1.75.0", "GPL-3.0.txt"),
+    ThirdParty("Mozilla GeckoView", BuildConfig.GECKO_VERSION, "Mozilla Foundation и участники", "Mozilla Public License 2.0", "https://hg.mozilla.org/mozilla-central/ , https://github.com/mozilla-firefox/firefox", "MPL-2.0.txt"),
+    ThirdParty("Bouncy Castle (bcprov-jdk18on)", "1.78.1", "The Legion of the Bouncy Castle Inc.", "MIT (Bouncy Castle License)", "https://github.com/bcgit/bc-java", "BouncyCastle-MIT.txt"),
+    ThirdParty("AndroidX, Jetpack Compose, Material 3", "Compose BOM 2026.09.00", "The Android Open Source Project", "Apache License 2.0", "https://android.googlesource.com/platform/frameworks/support", "Apache-2.0.txt"),
+    ThirdParty("Kotlin stdlib, kotlinx.coroutines", "1.11.0", "JetBrains s.r.o. и участники", "Apache License 2.0", "https://github.com/Kotlin/kotlinx.coroutines", "Apache-2.0.txt"),
+    ThirdParty("Phishing URL Blocklist (встроенный список)", "2026-10-01", "malware-filter (curben); источники OpenPhish, IPThreat, PhishTank", "CC BY-SA 4.0; код — MIT", "https://gitlab.com/malware-filter/phishing-filter", "CC-BY-SA-4.0.txt"),
+    ThirdParty("Online Malicious URL Blocklist (встроенный список)", "2026-10-01", "malware-filter (curben); данные URLhaus (abuse.ch)", "CC0 1.0 и MIT", "https://gitlab.com/malware-filter/urlhaus-filter", "CC0-1.0.txt"),
+    ThirdParty("Списки фильтров из пакетов обновлений", "по пакету", "EasyList, RU AdList, uAssets, AdGuard, HaGeZi, Peter Lowe и др.", "GPLv3 / CC BY-SA 3.0 / CC BY 3.0 / MIT и др. (по таблице)", "https://github.com/ivanivorontsov-sudo/tiho-updates", "THIRD_PARTY_NOTICES-filters.md"),
+)
+
+private val LICENSE_FILES = listOf(
+    "GPL-3.0.txt" to "GNU GPL v3", "MPL-2.0.txt" to "Mozilla Public License 2.0", "Apache-2.0.txt" to "Apache License 2.0",
+    "BouncyCastle-MIT.txt" to "Bouncy Castle (MIT)", "MIT-malware-filter.txt" to "MIT (malware-filter)", "CC-BY-SA-4.0.txt" to "CC BY-SA 4.0",
+    "CC0-1.0.txt" to "CC0 1.0", "THIRD_PARTY_NOTICES-filters.md" to "Авторы и лицензии списков фильтров",
+)
+
+@Composable
+fun LicensesScreen(b: Browser) {
+    val ctx = LocalContext.current
+    var open by remember { mutableStateOf<String?>(null) }
+    val text = remember(open) { open?.let { f -> runCatching { ctx.assets.open("licenses/$f").bufferedReader().use { it.readText() } }.getOrDefault("") } }
+    SubScreen("Сторонние компоненты и лицензии", { if (open != null) open = null else b.screen.value = Screen.ABOUT }) {
+        if (open != null) {
+            item { Text(text.orEmpty(), Modifier.padding(16.dp), style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace) }
+            return@SubScreen
+        }
+        item {
+            Text("Тихо распространяется по GNU GPL v3. В приложение входят компоненты других авторов; они используются без изменений на условиях своих лицензий. Исходный код каждого компонента доступен по ссылке.",
+                Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+        }
+        items(THIRD_PARTY) { c ->
+            ListItem(
+                headlineContent = { Text(c.name) },
+                supportingContent = { Text("Версия: ${c.version}\n${c.author}\nЛицензия: ${c.license}\nИсходный код: ${c.source}") },
+                modifier = Modifier.clickable { open = c.asset },
+            )
+        }
+        item { SectionHeader("Полные тексты лицензий") }
+        items(LICENSE_FILES) { (f, t) -> NavRow(t, icon = Icons.Outlined.Description) { open = f } }
     }
 }
