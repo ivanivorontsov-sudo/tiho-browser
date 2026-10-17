@@ -86,7 +86,7 @@ class ContentPacks(private val app: TihoApp) {
         init()
         app.threats.rebuild()
         app.engine.applyDynamicPrefs()
-        if (app.addons.tihoExt != null) app.addons.pushConfig()
+        if (app.addons.tihoExt != null) app.addons.schedulePush()
         return true
     }
 }
