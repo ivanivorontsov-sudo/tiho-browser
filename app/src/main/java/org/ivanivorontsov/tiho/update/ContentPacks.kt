@@ -61,8 +61,8 @@ class ContentPacks(private val app: TihoApp) {
         val updater = ContentPackUpdater(store, verifier)
         val r = updater.update(
             highWater = maxOf(prefs.contentHighWater, version),
-            allowCode = false, // 2.0 (GeckoView): pack JS shims and filter lists are not used; uBlock Origin manages its own lists
-            want = { f -> f.path.startsWith("security/") || f.path.startsWith("userscripts/") || f.path == "payment-domains.json" },
+            allowCode = true, // allow privacy.js for quiet anti-fingerprint updates
+            want = { f -> f.path.startsWith("security/") || f.path.startsWith("userscripts/") || f.path == "payment-domains.json" || f.path == "js/privacy.js" },
             fetchText = { Net.get(TrustedKeys.CONTENT_URL + it, 1024 * 1024) },
             fetchFile = { f -> Net.get(TrustedKeys.CONTENT_URL + f.url, f.size + 1) },
             validate = { reload() },
@@ -86,6 +86,7 @@ class ContentPacks(private val app: TihoApp) {
         init()
         app.threats.rebuild()
         app.engine.applyDynamicPrefs()
+        if (app.addons.tihoExt != null) app.addons.pushConfig()
         return true
     }
 }
