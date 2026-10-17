@@ -30,6 +30,7 @@ async function apply(c) {
         runAt: s.runAt || "document_end",
         allFrames: !!s.allFrames,
       };
+      if (s.world) opts.world = s.world;
       if (!s.trusted && c.paymentExclude && c.paymentExclude.length) opts.excludeMatches = c.paymentExclude;
       registered.push(await browser.contentScripts.register(opts));
     } catch (e) { errors.push(s.id + ": " + e); }
