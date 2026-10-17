@@ -44,7 +44,7 @@ fun SettingsScreen(b: Browser) {
             0 to "FPP — как в Firefox Strict (совместимо, русский)",
             1 to "RFP — как в Tor: en-US и светлые страницы (может ломать сайты)",
         ), p.fpMode) { p.fpMode = it } }
-        item { Text("Свой скрипт поверх RFP не подмешивается: он делает отпечаток редким. Тест EFF всё равно пишет «уникальный» — в его базе почти нет такого Gecko.",
+        item { Text("RFP выдаёт те же значения, что Tor Browser: часовой пояс UTC, en-US, обобщённые WebGL и число ядер, случайный холст; высота окна кратна 50. Тест EFF может писать «уникальный»: в его базе мало браузеров на Gecko с RFP. Свой скрипт поверх RFP не подмешивается.",
             Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { SwitchRow("Только HTTPS", "HTTP-сайты открываются только после предупреждения Gecko", p.httpsOnly) { p.httpsOnly = it } }
         item { SwitchRow("Global Privacy Control", "Сигнал «не продавать мои данные» (Sec-GPC)", p.gpc) { p.gpc = it } }

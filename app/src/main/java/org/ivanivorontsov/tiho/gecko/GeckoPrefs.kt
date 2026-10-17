@@ -99,9 +99,15 @@ object GeckoPrefs {
         "network.http.referer.spoofSource" to false,
         "dom.battery.enabled" to false,
         "device.sensors.motion.enabled" to false,
-        "beacon.enabled" to false,
+        "beacon.enabled" to true,
         "dom.push.enabled" to false,
-        "dom.webnotifications.enabled" to false,
+        "dom.webnotifications.enabled" to true,
+        "privacy.resistFingerprinting.randomDataOnCanvasExtract" to true,
+        "privacy.resistFingerprinting.block_mozAddonManager" to true,
+        "dom.webmidi.enabled" to false,
+        "dom.vr.enabled" to false,
+        "media.devices.enumerate.legacy.enabled" to false,
+        "dom.disable_window_move_resize" to true,
         "geo.provider.network.url" to "",
         "browser.send_pings" to false,
         // Do Not Track is rare now and makes a browser easier to single out. GPC stays a separate user setting.
@@ -153,6 +159,8 @@ object GeckoPrefs {
         m["intl.accept_languages"] = if (rfp) "en-US, en" else "ru-RU, ru, en-US, en"
         m["privacy.donottrackheader.enabled"] = false
         m["browser.display.use_system_colors"] = !rfp
+        m["webgl.enable-webgl2"] = !rfp
+        m["dom.netinfo.enabled"] = !rfp
         // 0 dark, 1 light, 2 system. RFP must stay light: a dark page is a small bucket.
         m["layout.css.prefers-color-scheme.content-override"] = if (rfp) 1 else when (c.theme) { 2 -> 0; 1 -> 1; else -> 2 }
         val bases = c.paymentDomains.filter { validHost(it) }.sorted()

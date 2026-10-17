@@ -65,6 +65,26 @@ class GeckoPrefsTest {
         assertEquals(1, f["privacy.spoof_english"])
         assertEquals("ru-RU, ru, en-US, en", f["intl.accept_languages"])
         assertEquals(0, f["layout.css.prefers-color-scheme.content-override"])
+        assertEquals(false, r["webgl.enable-webgl2"])
+        assertEquals(false, r["dom.netinfo.enabled"])
+        assertEquals(true, f["webgl.enable-webgl2"])
+        assertEquals(true, f["dom.netinfo.enabled"])
+    }
+
+    @Test fun commonApisStayLikeTorBrowser() {
+        val s = GeckoPrefs.static()
+        assertEquals(true, s["beacon.enabled"])
+        assertEquals(true, s["dom.webnotifications.enabled"])
+        assertEquals(true, s["privacy.resistFingerprinting.randomDataOnCanvasExtract"])
+        assertEquals(false, s["dom.push.enabled"])
+        assertEquals(false, s["dom.battery.enabled"])
+    }
+
+    @Test fun letterboxRoundsHeightDown() {
+        assertEquals(700f, org.ivanivorontsov.tiho.ui.letterboxHeight(742.5f, 50))
+        assertEquals(650f, org.ivanivorontsov.tiho.ui.letterboxHeight(650f, 50))
+        assertEquals(742.5f, org.ivanivorontsov.tiho.ui.letterboxHeight(742.5f, 0))
+        assertEquals(80f, org.ivanivorontsov.tiho.ui.letterboxHeight(80f, 50))
     }
 
     @Test fun quarantineAndRestrictedDomains() {

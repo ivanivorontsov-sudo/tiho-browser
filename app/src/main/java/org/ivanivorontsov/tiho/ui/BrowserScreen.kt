@@ -102,7 +102,11 @@ private fun BrowserMain(b: Browser) {
             Banners(b, tab)
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            AndroidView({ c -> GeckoView(c).also { b.attachView(it) } }, Modifier.fillMaxSize(), update = { b.attachView(it) })
+            val step = if (b.prefs.fpMode == 1 && !b.fullscreen.value && tab?.safePayment != true) LETTERBOX_STEP else 0
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val h = letterboxHeight(maxHeight.value, step).dp
+                AndroidView({ c -> GeckoView(c).also { b.attachView(it) } }, Modifier.fillMaxWidth().height(h).align(Alignment.TopCenter), update = { b.attachView(it) })
+            }
             if (tab != null && tab.isHome && tab.warning.value == null) HomePage(b, tab)
             (tab?.warning?.value as? Tab.Warning.Phishing)?.let { PhishingPage(b, tab, it) }
         }
@@ -111,6 +115,11 @@ private fun BrowserMain(b: Browser) {
 }
 
 private val findOpen = mutableStateOf(false)
+
+const val LETTERBOX_STEP = 50
+
+fun letterboxHeight(available: Float, step: Int): Float =
+    if (step <= 0 || available < step * 2) available else (available.toInt() / step * step).toFloat()
 
 @Composable
 private fun TopBar(b: Browser, tab: Tab) {
