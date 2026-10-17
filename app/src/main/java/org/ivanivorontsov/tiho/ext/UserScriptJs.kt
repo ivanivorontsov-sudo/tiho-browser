@@ -70,7 +70,7 @@ ${s.code}
     }
 
     /** Config message for the built-in extension's native port. */
-    fun config(scripts: List<UserScript>, values: (String) -> Map<String, String>, paymentDomains: Collection<String>, guardJs: String, payDetect: Boolean, privacyCode: String? = null): JSONObject {
+    fun config(scripts: List<UserScript>, values: (String) -> Map<String, String>, paymentDomains: Collection<String>, guardJs: String, payDetect: Boolean): JSONObject {
         val arr = JSONArray()
         for (s in scripts) {
             if (!s.enabled || s.tampered || !UserScriptPin.intact(s)) continue
@@ -78,18 +78,6 @@ ${s.code}
             arr.put(JSONObject().put("id", s.id).put("code", wrapper(s, guardJs, trusted))
                 .put("matches", JSONArray(nativeMatches(s) ?: listOf("*://*/*"))).put("runAt", runAt(s.runAt))
                 .put("allFrames", !s.noframes).put("trusted", trusted).put("values", JSONObject(values(s.id) as Map<*, *>)))
-        }
-        // Inject anti-fingerprint privacy.js in MAIN world at document-start (from signed pack or fallback)
-        if (!privacyCode.isNullOrBlank()) {
-            val privCode = """(function(){try{
-const C={seed:"tiho-rfp",fp:true,webrtc:1,gpc:true,dnt:true,pings:true,referrer:true,adblock:false,sensors:true,webgl:false,tz:true,cores:4,mem:4,desktop:false,major:120};
-$privacyCode
-tihoPrivacy(window,C,null);
-}catch(e){console.error("[\u0422ихо privacy]",e);}})();""".trim()
-            arr.put(JSONObject().put("id", "tiho-privacy").put("code", privCode)
-                .put("matches", JSONArray(listOf("*://*/*"))).put("runAt", "document_start")
-                .put("allFrames", true).put("trusted", false).put("world", "MAIN")
-                .put("values", JSONObject()))
         }
         return JSONObject().put("type", "config").put("scripts", arr)
             .put("paymentExclude", JSONArray(paymentExcludes(paymentDomains))).put("payDetect", payDetect)

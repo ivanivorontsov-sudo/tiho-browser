@@ -356,9 +356,8 @@ class Addons(private val app: TihoApp) {
     fun pushConfig() {
         val port = tihoPort ?: return
         try {
-            val privacy = app.contentPacks.text("js/privacy.js")
             val cfg = UserScriptJs.config(app.extensions.scripts.toList(), { app.extensions.gmAll(it) }, app.engine.paymentBaseDomains(),
-                app.payments.guardJs(), payDetect = true, privacyCode = privacy)
+                app.payments.guardJs(), payDetect = true)
             port.postMessage(cfg)
         } catch (e: Exception) { Log.e("Tiho", "push config", e) }
         app.engine.applyDynamicPrefs()

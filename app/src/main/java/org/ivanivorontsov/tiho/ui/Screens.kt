@@ -40,7 +40,12 @@ fun SettingsScreen(b: Browser) {
 
         item { SectionHeader("Приватность (настройки Gecko в духе Arkenfox / IronFox)") }
         item { SwitchRow("Строгая защита от отслеживания (ETP Strict)", "Трекеры, майнеры, фингерпринтеры, соцсети; полная защита cookie (Total Cookie Protection)", p.etpStrict) { p.etpStrict = it } }
-        item { ChoiceRow("Защита от фингерпринтинга", listOf(0 to "FPP — как в Firefox Strict (совместимо)", 1 to "RFP — максимальная защита (может ломать сайты)"), p.fpMode) { p.fpMode = it } }
+        item { ChoiceRow("Защита от фингерпринтинга", listOf(
+            0 to "FPP — как в Firefox Strict (совместимо, русский)",
+            1 to "RFP — как в Tor: en-US и светлые страницы (может ломать сайты)",
+        ), p.fpMode) { p.fpMode = it } }
+        item { Text("Свой скрипт поверх RFP не подмешивается: он делает отпечаток редким. Тест EFF всё равно пишет «уникальный» — в его базе почти нет такого Gecko.",
+            Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         item { SwitchRow("Только HTTPS", "HTTP-сайты открываются только после предупреждения Gecko", p.httpsOnly) { p.httpsOnly = it } }
         item { SwitchRow("Global Privacy Control", "Сигнал «не продавать мои данные» (Sec-GPC)", p.gpc) { p.gpc = it } }
         item { ChoiceRow("WebRTC", listOf(0 to "Выключен", 1 to "Без утечки IP (только адрес по умолчанию, без локальных)", 2 to "Разрешён полностью"), p.webrtcMode) { p.webrtcMode = it } }

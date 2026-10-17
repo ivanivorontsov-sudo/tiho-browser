@@ -15,6 +15,7 @@ object GeckoPrefs {
     data class Config(
         val webrtcMode: Int = 1,        // 0 off, 1 no IP leak, 2 allowed
         val fpMode: Int = 0,            // 0 FPP, 1 RFP
+        val theme: Int = 0,             // 0 system, 1 light, 2 dark (web content; ignored while RFP is on)
         val referrerTrim: Boolean = true,
         val jitOff: Boolean = false,
         val drm: Boolean = false,
@@ -103,6 +104,8 @@ object GeckoPrefs {
         "dom.webnotifications.enabled" to false,
         "geo.provider.network.url" to "",
         "browser.send_pings" to false,
+        // Do Not Track is rare now and makes a browser easier to single out. GPC stays a separate user setting.
+        "privacy.donottrackheader.enabled" to false,
         "network.http.http3.enable_0rtt" to false,
         "extensions.webextensions.remote" to true,
         // GeckoView ships play-services-fido for WebAuthn; we exclude Google Play Services, so WebAuthn is off.
@@ -138,10 +141,20 @@ object GeckoPrefs {
         m["javascript.options.wasm_baselinejit"] = jit
         m["javascript.options.wasm_optimizingjit"] = jit
         m["javascript.options.asmjs"] = jit
-        // Fingerprinting: FPP (Firefox strict-mode style) or RFP (Tor-like), payment hosts relaxed in both modes.
+        // Fingerprinting: FPP (Firefox strict) or RFP (Tor-like). No extra JS spoofing on top: a second
+        // noise layer (privacy.js) makes canvas/audio unique and fights RFP. Payment hosts stay relaxed.
+        val rfp = c.fpMode == 1
         val hosts = c.paymentHosts.filter { validHost(it) }.sorted()
-        m["privacy.resistFingerprinting"] = c.fpMode == 1
-        m["privacy.resistFingerprinting.pbmode"] = c.fpMode == 1
+        m["privacy.resistFingerprinting"] = rfp
+        m["privacy.resistFingerprinting.pbmode"] = rfp
+        m["privacy.resistFingerprinting.letterboxing"] = rfp
+        // 2 = spoof en-US without a prompt, so Accept-Language matches the JS locale. 1 = keep the real locale.
+        m["privacy.spoof_english"] = if (rfp) 2 else 1
+        m["intl.accept_languages"] = if (rfp) "en-US, en" else "ru-RU, ru, en-US, en"
+        m["privacy.donottrackheader.enabled"] = false
+        m["browser.display.use_system_colors"] = !rfp
+        // 0 dark, 1 light, 2 system. RFP must stay light: a dark page is a small bucket.
+        m["layout.css.prefers-color-scheme.content-override"] = if (rfp) 1 else when (c.theme) { 2 -> 0; 1 -> 1; else -> 2 }
         val bases = c.paymentDomains.filter { validHost(it) }.sorted()
         m["privacy.resistFingerprinting.exemptedDomains"] = bases.flatMap { listOf(it, "*.$it") }.joinToString(",")
         m["privacy.fingerprintingProtection"] = true

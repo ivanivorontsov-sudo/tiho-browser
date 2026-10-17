@@ -71,8 +71,8 @@ class Prefs(context: Context) {
     var httpsOnly by B("https_only", true)
     var etpStrict by B("etp_strict", true)
     var gpc by B("gpc", true)
-    /** 0 = fingerprintingProtection (FPP, Firefox's strict-mode protections), 1 = resistFingerprinting (RFP, Tor-like). */
-    var fpMode by I("fp_mode", 1) // default to RFP for better fingerprint hiding
+    /** 0 = fingerprintingProtection (FPP), 1 = resistFingerprinting (RFP). RFP also spoofs en-US and a light color scheme. */
+    var fpMode by I("fp_mode", 1)
     var webrtcMode by I("webrtc", 1) // 0 disabled, 1 no IP leak (default address only, no host candidates), 2 allowed
     /** 0 off, 1 Mozilla TRR (Cloudflare), 2 Quad9, 3 Mullvad, 4 AdGuard */
     var doh by I("doh_mode", 0)

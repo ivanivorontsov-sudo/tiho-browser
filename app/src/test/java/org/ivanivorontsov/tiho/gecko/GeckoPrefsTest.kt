@@ -19,6 +19,7 @@ class GeckoPrefsTest {
         assertEquals(false, s["network.captive-portal-service.enabled"])
         assertEquals(false, s["extensions.update.enabled"])
         assertEquals(false, s["security.webauth.webauthn"])
+        assertEquals(false, s["privacy.donottrackheader.enabled"])
     }
 
     @Test fun webrtcModes() {
@@ -50,6 +51,20 @@ class GeckoPrefsTest {
         assertEquals("-AllTargets", ov.getJSONObject(0).getString("overrides"))
         assertEquals(false, GeckoPrefs.dynamic(GeckoPrefs.Config(fpMode = 0))["privacy.resistFingerprinting"])
         assertEquals(true, GeckoPrefs.dynamic(GeckoPrefs.Config(fpMode = 0))["privacy.fingerprintingProtection"])
+    }
+
+    @Test fun rfpMatchesOneCohort() {
+        val r = GeckoPrefs.dynamic(GeckoPrefs.Config(fpMode = 1, theme = 2))
+        assertEquals(2, r["privacy.spoof_english"])
+        assertEquals("en-US, en", r["intl.accept_languages"])
+        assertEquals(true, r["privacy.resistFingerprinting.letterboxing"])
+        assertEquals(false, r["privacy.donottrackheader.enabled"])
+        assertEquals(false, r["browser.display.use_system_colors"])
+        assertEquals(1, r["layout.css.prefers-color-scheme.content-override"])
+        val f = GeckoPrefs.dynamic(GeckoPrefs.Config(fpMode = 0, theme = 2))
+        assertEquals(1, f["privacy.spoof_english"])
+        assertEquals("ru-RU, ru, en-US, en", f["intl.accept_languages"])
+        assertEquals(0, f["layout.css.prefers-color-scheme.content-override"])
     }
 
     @Test fun quarantineAndRestrictedDomains() {

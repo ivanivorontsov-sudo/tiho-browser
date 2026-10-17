@@ -35,7 +35,7 @@ class Engine(private val app: TihoApp) {
         cfg.writeText(GeckoPrefs.yaml(GeckoPrefs.static() + GeckoPrefs.dynamic(config()) + extra))
         val b = GeckoRuntimeSettings.Builder()
             .configFilePath(cfg.absolutePath)
-            .locales(arrayOf("ru-RU", "ru", "en-US"))
+            .locales(if (prefs.fpMode == 1) arrayOf("en-US", "en") else arrayOf("ru-RU", "ru", "en-US"))
             .contentBlocking(contentBlocking())
             .globalPrivacyControlEnabled(prefs.gpc)
             .allowInsecureConnections(if (prefs.httpsOnly) GeckoRuntimeSettings.HTTPS_ONLY else GeckoRuntimeSettings.ALLOW_ALL)
@@ -44,7 +44,7 @@ class Engine(private val app: TihoApp) {
             .aboutConfigEnabled(false)
             .loginAutofillEnabled(false)
             .extensionsWebAPIEnabled(false)
-            .preferredColorScheme(when (prefs.theme) { 1 -> GeckoRuntimeSettings.COLOR_SCHEME_LIGHT; 2 -> GeckoRuntimeSettings.COLOR_SCHEME_DARK; else -> GeckoRuntimeSettings.COLOR_SCHEME_SYSTEM })
+            .preferredColorScheme(webColorScheme())
         runtime = GeckoRuntime.create(app, b.build())
         // The YAML config covers start-up; the same prefs are also set through the pref API (belt and braces).
         GeckoPreferenceController.setGeckoPrefs(toSetList(GeckoPrefs.static())).accept({ r ->
@@ -83,7 +83,7 @@ class Engine(private val app: TihoApp) {
         s.setLnaBlocking(true)
         s.setPostQuantumKeyExchangeEnabled(true)
         s.setLoginAutofillEnabled(false)
-        s.setPreferredColorScheme(when (prefs.theme) { 1 -> GeckoRuntimeSettings.COLOR_SCHEME_LIGHT; 2 -> GeckoRuntimeSettings.COLOR_SCHEME_DARK; else -> GeckoRuntimeSettings.COLOR_SCHEME_SYSTEM })
+        s.setPreferredColorScheme(webColorScheme())
         val doh = Prefs.dohUri(prefs.doh)
         if (doh != null) {
             s.setTrustedRecursiveResolverUri(doh)
@@ -116,12 +116,20 @@ class Engine(private val app: TihoApp) {
     fun paymentHosts(): Set<String> = GeckoPrefs.seedHosts(paymentBaseDomains()) + synchronized(learnedHosts) { learnedHosts.toSet() }
 
     fun config() = GeckoPrefs.Config(
-        webrtcMode = prefs.webrtcMode, fpMode = prefs.fpMode, referrerTrim = prefs.referrerTrim, jitOff = prefs.jitOff,
+        webrtcMode = prefs.webrtcMode, fpMode = prefs.fpMode, theme = prefs.theme, referrerTrim = prefs.referrerTrim, jitOff = prefs.jitOff,
         drm = prefs.drm, blockPopups = prefs.blockPopups,
         paymentHosts = paymentHosts(), paymentDomains = paymentBaseDomains(),
         trustedAddons = if (this::runtimeAddons.isInitialized) runtimeAddons().trustedForPayment() else emptySet(),
         allAddons = if (this::runtimeAddons.isInitialized) runtimeAddons().installedIds() else emptySet(),
     )
+
+    /** RFP reports one light scheme for every user. A system or dark scheme is a small, stable bucket. */
+    private fun webColorScheme(): Int = when {
+        prefs.fpMode == 1 -> GeckoRuntimeSettings.COLOR_SCHEME_LIGHT
+        prefs.theme == 1 -> GeckoRuntimeSettings.COLOR_SCHEME_LIGHT
+        prefs.theme == 2 -> GeckoRuntimeSettings.COLOR_SCHEME_DARK
+        else -> GeckoRuntimeSettings.COLOR_SCHEME_SYSTEM
+    }
 
     lateinit var runtimeAddons: () -> Addons
 

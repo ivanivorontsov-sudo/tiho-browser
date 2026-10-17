@@ -61,8 +61,8 @@ class ContentPacks(private val app: TihoApp) {
         val updater = ContentPackUpdater(store, verifier)
         val r = updater.update(
             highWater = maxOf(prefs.contentHighWater, version),
-            allowCode = true, // allow privacy.js for quiet anti-fingerprint updates
-            want = { f -> f.path.startsWith("security/") || f.path.startsWith("userscripts/") || f.path == "payment-domains.json" || f.path == "js/privacy.js" },
+            allowCode = false, // code shims are not applied: a second spoof on top of RFP/FPP makes the fingerprint rarer
+            want = { f -> f.path.startsWith("security/") || f.path.startsWith("userscripts/") || f.path == "payment-domains.json" },
             fetchText = { Net.get(TrustedKeys.CONTENT_URL + it, 1024 * 1024) },
             fetchFile = { f -> Net.get(TrustedKeys.CONTENT_URL + f.url, f.size + 1) },
             validate = { reload() },
@@ -86,7 +86,6 @@ class ContentPacks(private val app: TihoApp) {
         init()
         app.threats.rebuild()
         app.engine.applyDynamicPrefs()
-        if (app.addons.tihoExt != null) app.addons.schedulePush()
         return true
     }
 }
