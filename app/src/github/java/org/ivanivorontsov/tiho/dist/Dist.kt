@@ -104,6 +104,29 @@ object Dist {
         }
     }
 
+    private val screenSpoof = mutableStateOf<Boolean?>(null)
+
+    fun screenSpoofOn(p: Prefs): Boolean = screenSpoof.value ?: p.sp.getBoolean("screen_spoof", false).also { screenSpoof.value = it }
+
+    fun extraScript(app: TihoApp): org.json.JSONObject? {
+        if (!screenSpoofOn(app.prefs)) return null
+        return org.json.JSONObject().put("id", "tiho-screen").put("code", org.ivanivorontsov.tiho.ext.ScreenSize.js())
+            .put("matches", org.json.JSONArray(listOf("*://*/*"))).put("runAt", "document_start")
+            .put("allFrames", true).put("trusted", false).put("values", org.json.JSONObject())
+    }
+
+    fun setScreenSpoof(app: TihoApp, on: Boolean) {
+        screenSpoof.value = on
+        app.prefs.sp.edit().putBoolean("screen_spoof", on).apply()
+        app.addons.schedulePush()
+    }
+
+    fun LazyListScope.fingerprintItems(b: Browser) {
+        item {
+            SwitchRow("Подменять размер экрана (360x800)", "Сайты видят типовой размер экрана: 360x800 на большинстве телефонов, на более широких — ближайший распространённый. Сайты могут распознать подмену. На платёжных сайтах не действует. По умолчанию выключено", screenSpoofOn(b.prefs)) { setScreenSpoof(b.app, it) }
+        }
+    }
+
     fun LazyListScope.appUpdateItems(b: Browser) {
         val p = b.prefs
         val up = updater

@@ -358,6 +358,7 @@ class Addons(private val app: TihoApp) {
         try {
             val cfg = UserScriptJs.config(app.extensions.scripts.toList(), { app.extensions.gmAll(it) }, app.engine.paymentBaseDomains(),
                 app.payments.guardJs(), payDetect = true)
+            org.ivanivorontsov.tiho.dist.Dist.extraScript(app)?.let { cfg.getJSONArray("scripts").put(it) }
             port.postMessage(cfg)
         } catch (e: Exception) { Log.e("Tiho", "push config", e) }
         app.engine.applyDynamicPrefs()

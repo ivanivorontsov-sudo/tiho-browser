@@ -26,6 +26,10 @@ object Dist {
 
     fun LazyListScope.dnsItems(p: Prefs) {}
 
+    fun extraScript(app: TihoApp): org.json.JSONObject? = null
+
+    fun LazyListScope.fingerprintItems(b: Browser) {}
+
     fun LazyListScope.appUpdateItems(b: Browser) {
         item { SectionHeader("Браузер") }
         item {
