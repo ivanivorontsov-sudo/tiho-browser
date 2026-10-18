@@ -42,7 +42,7 @@ addons.mozilla.org. Есть включение/выключение, удале
   высота панели адреса Fenix по умолчанию); с 2.1.2 эта высота постоянна, полоска загрузки и баннеры её не меняют. Код из пакетов обновлений не исполняется.
   Для платёжных доменов действуют `resistFingerprinting.exemptedDomains` и `fingerprintingProtection.granularOverrides` (`-AllTargets`);
 - HTTPS-only;
-- DoH — опция: Mozilla TRR (Cloudflare), Quad9, AdGuard; режим «только DoH» или «DoH сначала»;
+- DoH (только сборка github, по умолчанию выключен): Mozilla TRR (Cloudflare), Quad9, AdGuard; режим «только DoH» или «DoH сначала»;
 - WebRTC: «без утечки IP» по умолчанию (`ice.default_address_only`, `no_host`, `proxy_only_if_behind_proxy`), также «выключен» или «разрешён»;
 - выключены телеметрия, health report, Normandy/исследования, crash reporter, удалённые эксперименты, телеметрия подтверждения TRR,
   предзагрузка (prefetch/dns-prefetch/preconnect/speculative), удалённая проверка загрузок Safe Browsing.
@@ -157,3 +157,10 @@ SHA-256 закрепляется при установке, изменённый
 * Сайты на сертификатах «Russian Trusted Root CA» Gecko не открывает: этот УЦ не входит в хранилище Mozilla.
 
 Лицензия: GPL-3.0. uBlock Origin — GPL-3.0, GeckoView — MPL-2.0.
+
+## Сборки (product flavors)
+
+- `github` — APK из GitHub Releases со встроенным подписанным обновлением через tiho-updates (`REQUEST_INSTALL_PACKAGES`)
+  и опцией DoH (выключена по умолчанию). Сборка: `./gradlew assembleGithubRelease`.
+- `play` — для Google Play: без встроенного обновления и без разрешения на установку пакетов, кода и настроек DoH нет
+  (DNS всегда системный). Сборка: `./gradlew bundlePlayRelease`. Текст для карточки — `docs/play-listing.md`.

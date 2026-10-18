@@ -211,7 +211,7 @@ private fun Image(bm: androidx.compose.ui.graphics.ImageBitmap) =
     androidx.compose.foundation.Image(bm, null, Modifier.size(24.dp))
 
 @Composable
-private fun Banner(color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, actions: @Composable RowScope.() -> Unit = {}) {
+internal fun Banner(color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, actions: @Composable RowScope.() -> Unit = {}) {
     Row(Modifier.fillMaxWidth().background(color.copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
@@ -237,18 +237,7 @@ private fun Banners(b: Browser, tab: Tab) {
             TextButton(onClick = { tab.dismissPayHint() }) { Text("Нет") }
         }
     }
-    val up = b.app.appUpdater.available.value
-    if (up != null && b.prefs.updateBannerDismissed != up.versionName) {
-        Banner(MaterialTheme.colorScheme.primary, Icons.Outlined.SystemUpdate,
-            "Доступно обновление Тихо ${up.versionName}" + (if (up.geckoVersion.isNotEmpty()) " (GeckoView ${up.geckoVersion.substringBefore('.')})" else "") + " — исправления безопасности движка") {
-            TextButton(onClick = { b.screen.value = Screen.UPDATES }) { Text("Обновить") }
-            IconButton(onClick = { b.prefs.updateBannerDismissed = up.versionName }) { Icon(Icons.Filled.Close, "Скрыть") }
-        }
-    } else if (b.prefs.appUpdateCheck && b.app.appUpdater.stale()) {
-        Banner(MaterialTheme.colorScheme.error, Icons.Outlined.GppMaybe, "Более 14 дней не удаётся проверить обновления браузера — движок может быть устаревшим") {
-            TextButton(onClick = { b.screen.value = Screen.UPDATES }) { Text("Проверить") }
-        }
-    }
+    org.ivanivorontsov.tiho.dist.Dist.UpdateBanner(b)
 }
 
 @Composable

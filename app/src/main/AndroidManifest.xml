@@ -11,8 +11,6 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- 1.1.0: payment-safe mode hides other apps' overlay windows (Android 12+) -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
-    <!-- 1.1.0: signed in-app updates via PackageInstaller (the user confirms every install) -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- JobScheduler network constraint for the daily signed-update check -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -75,12 +73,5 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <receiver
-            android:name=".update.InstallReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="org.ivanivorontsov.tiho.INSTALL_STATUS" />
-            </intent-filter>
-        </receiver>
     </application>
 </manifest>

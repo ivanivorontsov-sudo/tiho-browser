@@ -84,11 +84,7 @@ class Engine(private val app: TihoApp) {
         s.setPostQuantumKeyExchangeEnabled(true)
         s.setLoginAutofillEnabled(false)
         s.setPreferredColorScheme(webColorScheme())
-        val doh = Prefs.dohUri(prefs.doh)
-        if (doh != null) {
-            s.setTrustedRecursiveResolverUri(doh)
-            s.setTrustedRecursiveResolverMode(if (prefs.dohStrict) GeckoRuntimeSettings.TRR_MODE_ONLY else GeckoRuntimeSettings.TRR_MODE_FIRST)
-        } else s.setTrustedRecursiveResolverMode(GeckoRuntimeSettings.TRR_MODE_OFF)
+        org.ivanivorontsov.tiho.dist.Dist.applyDns(s, prefs)
         val cb = s.contentBlocking
         val strict = prefs.etpStrict
         cb.setAntiTracking(if (strict) ContentBlocking.AntiTracking.STRICT else ContentBlocking.AntiTracking.DEFAULT)

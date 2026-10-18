@@ -10,7 +10,6 @@ import org.ivanivorontsov.tiho.gecko.Addons
 import org.ivanivorontsov.tiho.gecko.Engine
 import org.ivanivorontsov.tiho.security.Payments
 import org.ivanivorontsov.tiho.security.Threats
-import org.ivanivorontsov.tiho.update.AppUpdater
 import org.ivanivorontsov.tiho.update.ContentPacks
 import org.ivanivorontsov.tiho.update.UpdateJob
 import java.io.File
@@ -24,7 +23,6 @@ class TihoApp : Application() {
     lateinit var prefs: Prefs
     lateinit var payments: Payments
     lateinit var contentPacks: ContentPacks
-    lateinit var appUpdater: AppUpdater
     lateinit var threats: Threats
     lateinit var extensions: Extensions
     lateinit var bookmarks: Bookmarks
@@ -46,7 +44,7 @@ class TihoApp : Application() {
         threats = Threats(this)
         contentPacks.init()
         threats.rebuild()
-        appUpdater = AppUpdater(this)
+        org.ivanivorontsov.tiho.dist.Dist.init(this)
         extensions = Extensions(this, prefs).also { it.load() }
         extensions.onChanged = { if (this::addons.isInitialized) addons.pushConfig() }
         bookmarks = Bookmarks(this)
@@ -60,7 +58,7 @@ class TihoApp : Application() {
         if (prefs.clearOnExit && prefs.sp.getBoolean("dirty", false)) engine.clearAllData { markClean() }
         addons.start()
         prefs.onChange { engine.applySettings() }
-        UpdateJob.schedule(this, prefs.contentAuto || prefs.appUpdateCheck, prefs.contentWifiOnly && !prefs.appUpdateCheck)
+        UpdateJob.schedule(this, prefs.contentAuto || org.ivanivorontsov.tiho.dist.Dist.appChecks(this), prefs.contentWifiOnly && !org.ivanivorontsov.tiho.dist.Dist.appChecks(this))
     }
 
     fun markDirty() { if (!prefs.sp.getBoolean("dirty", false)) prefs.sp.edit().putBoolean("dirty", true).apply() }

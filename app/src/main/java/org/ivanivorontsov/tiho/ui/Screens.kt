@@ -49,8 +49,7 @@ fun SettingsScreen(b: Browser) {
         item { SwitchRow("Только HTTPS", "HTTP-сайты открываются только после предупреждения Gecko", p.httpsOnly) { p.httpsOnly = it } }
         item { SwitchRow("Global Privacy Control", "Сигнал «не продавать мои данные» (Sec-GPC)", p.gpc) { p.gpc = it } }
         item { ChoiceRow("WebRTC", listOf(0 to "Выключен", 1 to "Без утечки IP (только адрес по умолчанию, без локальных)", 2 to "Разрешён полностью"), p.webrtcMode) { p.webrtcMode = it } }
-        item { ChoiceRow("DNS через HTTPS (DoH)", Prefs.DOH_PROVIDERS, p.doh) { p.doh = it } }
-        if (p.doh != 0) item { SwitchRow("Только DoH (без отката на системный DNS)", null, p.dohStrict) { p.dohStrict = it } }
+        with(org.ivanivorontsov.tiho.dist.Dist) { dnsItems(p) }
         item { SwitchRow("Обрезать Referer между сайтами", "Другим сайтам передаётся только домен (XOriginTrimmingPolicy=2)", p.referrerTrim) { p.referrerTrim = it } }
         item { SwitchRow("Удалять трекинг-параметры из ссылок", "utm_*, fbclid, gclid… (query stripping)", p.stripParams) { p.stripParams = it } }
         item { SwitchRow("Отключить JIT JavaScript", "Меньше поверхность атаки, медленнее сайты. JavaScript остаётся включённым. Действует на все сайты (в Gecko нет переключателя JIT по сайтам)", p.jitOff) { p.jitOff = it } }
@@ -309,28 +308,9 @@ fun HistoryScreen(b: Browser) {
 @Composable
 fun UpdatesScreen(b: Browser) {
     val p = b.prefs
-    val up = b.app.appUpdater
     val ctx = LocalContext.current
-    var busy by remember { mutableStateOf(false) }
     SubScreen("Обновления", { b.backTo() }) {
-        item { SectionHeader("Браузер (APK)") }
-        item {
-            ListItem(headlineContent = { Text("Тихо ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})") },
-                supportingContent = { Text("GeckoView ${BuildConfig.GECKO_VERSION}\nИсправления безопасности Gecko приходят только с новым APK — проверка ежедневно.\n" +
-                    (p.appUpdateStatus.ifEmpty { "Ещё не проверялось" }) + (if (p.appLastCheck.isNotEmpty()) "\nПроверено: ${p.appLastCheck}" else "")) })
-        }
-        item {
-            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(enabled = !busy, onClick = { busy = true; up.check(true) { s -> b.main.post { busy = false; b.toast(s) } } }) { Text("Проверить сейчас") }
-                up.available.value?.let { info ->
-                    Button(enabled = up.progress.value == null, onClick = {
-                        if (!up.canInstall()) up.openInstallPermissionSettings(ctx) else up.install(info) { s -> b.toast(s) }
-                    }) { Text("Установить ${info.versionName}") }
-                }
-            }
-        }
-        up.progress.value?.let { item { Text(it, Modifier.padding(16.dp)) } }
-        item { SwitchRow("Проверять обновления браузера ежедневно", "update-v2.json, подпись Ed25519; APK: SHA-256, размер и сертификат подписи должны совпасть", p.appUpdateCheck) { p.appUpdateCheck = it; org.ivanivorontsov.tiho.update.UpdateJob.schedule(ctx, p.contentAuto || it, p.contentWifiOnly) } }
+        with(org.ivanivorontsov.tiho.dist.Dist) { appUpdateItems(b) }
         item { SectionHeader("Списки безопасности (подписанные пакеты)") }
         item {
             ListItem(headlineContent = { Text("Пакет v${b.app.contentPacks.version}") },

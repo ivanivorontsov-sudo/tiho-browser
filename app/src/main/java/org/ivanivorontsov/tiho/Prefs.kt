@@ -18,7 +18,7 @@ class Prefs(context: Context) {
     /** Keys that are statistics, not settings: no reconfiguration on change. */
     private val silent = setOf("total_blocked", "content_status", "content_last_check", "payment_known", "app_update_status",
         "app_last_check", "addon_pins", "addons_paused", "ubo_installed", "update_banner_dismissed", "app_last_ok")
-    private fun changed(key: String) { if (key !in silent) listeners.forEach { it() } }
+    fun changed(key: String) { if (key !in silent) listeners.forEach { it() } }
 
     private inner class B(val key: String, def: Boolean) : ReadWriteProperty<Any, Boolean> {
         val st: MutableState<Boolean> = mutableStateOf(sp.getBoolean(key, def))
@@ -74,10 +74,6 @@ class Prefs(context: Context) {
     /** 0 = fingerprintingProtection (FPP), 1 = resistFingerprinting (RFP). RFP also spoofs en-US and a light color scheme. */
     var fpMode by I("fp_mode", 1)
     var webrtcMode by I("webrtc", 1) // 0 disabled, 1 no IP leak (default address only, no host candidates), 2 allowed
-    /** 0 off, 1 Mozilla TRR (Cloudflare), 2 Quad9, 3 Mullvad, 4 AdGuard */
-    var doh by I("doh_mode", 0)
-    var dohStrict by B("doh_strict", false)
-    init { if (doh == 3) doh = 2 }
     var referrerTrim by B("referrer_trim", true)
     var jitOff by B("jit_off", false)
     var drm by B("drm", false)
@@ -132,17 +128,5 @@ class Prefs(context: Context) {
             "ddg" to "DuckDuckGo", "brave" to "Brave Search", "startpage" to "Startpage",
             "mojeek" to "Mojeek", "yandex" to "Яндекс", "google" to "Google",
         )
-        val DOH_PROVIDERS = listOf(
-            0 to "Выключен (системный DNS)",
-            1 to "Mozilla (Cloudflare)",
-            2 to "Quad9 (Швейцария)",
-            4 to "AdGuard DNS (с блокировкой рекламы)",
-        )
-        fun dohUri(mode: Int): String? = when (mode) {
-            1 -> "https://mozilla.cloudflare-dns.com/dns-query"
-            2 -> "https://dns.quad9.net/dns-query"
-            4 -> "https://dns.adguard-dns.com/dns-query"
-            else -> null
-        }
     }
 }

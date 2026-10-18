@@ -56,8 +56,7 @@ class MainActivity : ComponentActivity() {
         if (browser.tabs.isEmpty()) browser.newTab()
         browser.updateWindowSecurity()
         // Daily signed update check also happens here (the JobScheduler job does not survive reboots).
-        val last = app.prefs.appLastOk.toLongOrNull() ?: 0L
-        if (app.prefs.appUpdateCheck && System.currentTimeMillis() - last > 20L * 3600 * 1000) app.appUpdater.check(false)
+        org.ivanivorontsov.tiho.dist.Dist.onLaunch(app)
         setContent { TihoTheme(app.prefs.theme) { BrowserApp(browser) } }
     }
 

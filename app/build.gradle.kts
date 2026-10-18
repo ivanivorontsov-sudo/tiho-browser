@@ -52,6 +52,12 @@ android {
         }
     }
 
+    flavorDimensions += "dist"
+    productFlavors {
+        create("github") { dimension = "dist" }
+        create("play") { dimension = "dist" }
+    }
+
     signingConfigs {
         create("tiho") {
             if (canSign) {

@@ -16,13 +16,10 @@ class UpdateJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         val app = application as TihoApp
         if (!app.prefs.contentAuto) {
-            if (!app.prefs.appUpdateCheck) return false
-            app.appUpdater.check(manual = false) { jobFinished(params, false) }
-            return true
+            return org.ivanivorontsov.tiho.dist.Dist.checkApp(app) { jobFinished(params, false) }
         }
         app.contentPacks.check(manual = false) {
-            if (app.prefs.appUpdateCheck) app.appUpdater.check(manual = false) { jobFinished(params, false) }
-            else jobFinished(params, false)
+            if (!org.ivanivorontsov.tiho.dist.Dist.checkApp(app) { jobFinished(params, false) }) jobFinished(params, false)
         }
         return true
     }
