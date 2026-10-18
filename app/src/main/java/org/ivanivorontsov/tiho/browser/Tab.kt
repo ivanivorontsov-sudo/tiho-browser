@@ -73,6 +73,9 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
         session.navigationDelegate = Nav()
         session.progressDelegate = Progress()
         session.contentDelegate = Content()
+        session.scrollDelegate = object : GeckoSession.ScrollDelegate {
+            override fun onScrollChanged(session: GeckoSession, scrollX: Int, scrollY: Int) { browser.onScroll(this@Tab, scrollY) }
+        }
         session.promptDelegate = browser.prompts.delegate(this)
         session.permissionDelegate = browser.permissions.delegate(this)
         session.contentBlockingDelegate = object : ContentBlocking.Delegate {
@@ -228,7 +231,7 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
     }
 
     private inner class Progress : GeckoSession.ProgressDelegate {
-        override fun onPageStart(session: GeckoSession, u: String) = guard("onPageStart") { loading.value = true; progress.floatValue = 0.05f; if (!incognito) app.markDirty() }
+        override fun onPageStart(session: GeckoSession, u: String) = guard("onPageStart") { loading.value = true; progress.floatValue = 0.05f; if (browser.current.value === this@Tab) browser.showToolbar(); if (!incognito) app.markDirty() }
         override fun onPageStop(session: GeckoSession, success: Boolean) { loading.value = false; progress.floatValue = 1f }
         override fun onProgressChange(session: GeckoSession, p: Int) { progress.floatValue = p / 100f }
         override fun onSecurityChange(session: GeckoSession, info: GeckoSession.ProgressDelegate.SecurityInformation) = guard("onSecurityChange") { secure.value = info.isSecure }

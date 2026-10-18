@@ -22,6 +22,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -95,18 +97,31 @@ fun BrowserApp(b: Browser) {
 @Composable
 private fun BrowserMain(b: Browser) {
     val tab = b.current.value
-    Column(Modifier.fillMaxSize().then(if (b.fullscreen.value) Modifier else Modifier.systemBarsPadding().imePadding())) {
-        if (!b.fullscreen.value && tab != null) {
-            TopBar(b, tab)
-            if (tab.loading.value) LinearProgressIndicator(progress = { tab.progress.floatValue }, Modifier.fillMaxWidth().height(2.dp))
-            Banners(b, tab)
+    val full = b.fullscreen.value
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var barPx by remember { mutableIntStateOf(0) }
+    val locked = full || findOpen.value || tab?.payment == true || tab?.safePayment == true || tab?.isHome == true || tab?.warning?.value != null
+    val maxPx = if (full) 0 else barPx
+    SideEffect {
+        b.toolbarHeight = maxPx.toFloat()
+        b.toolbarLocked = locked
+        if (locked) b.showToolbar()
+    }
+    val off = if (locked) 0f else b.toolbarOffset.floatValue.coerceIn(-maxPx.toFloat(), 0f)
+    Box(Modifier.fillMaxSize().then(if (full) Modifier else Modifier.systemBarsPadding().imePadding())) {
+        AndroidView({ c -> GeckoView(c).also { b.attachView(it) } },
+            Modifier.fillMaxSize().graphicsLayer { translationY = maxPx + off },
+            update = { gv -> b.attachView(gv); gv.setDynamicToolbarMaxHeight(maxPx) })
+        if (tab != null && tab.isHome && tab.warning.value == null) Box(Modifier.fillMaxSize().padding(top = with(density) { maxPx.toDp() })) { HomePage(b, tab) }
+        (tab?.warning?.value as? Tab.Warning.Phishing)?.let { Box(Modifier.fillMaxSize().padding(top = with(density) { maxPx.toDp() })) { PhishingPage(b, tab, it) } }
+        if (!full && tab != null) {
+            Column(Modifier.fillMaxWidth().onSizeChanged { barPx = it.height }.graphicsLayer { translationY = off }.background(MaterialTheme.colorScheme.surface)) {
+                TopBar(b, tab)
+                if (tab.loading.value) LinearProgressIndicator(progress = { tab.progress.floatValue }, Modifier.fillMaxWidth().height(2.dp))
+                Banners(b, tab)
+            }
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            AndroidView({ c -> GeckoView(c).also { b.attachView(it) } }, Modifier.fillMaxSize(), update = { b.attachView(it) })
-            if (tab != null && tab.isHome && tab.warning.value == null) HomePage(b, tab)
-            (tab?.warning?.value as? Tab.Warning.Phishing)?.let { PhishingPage(b, tab, it) }
-        }
-        if (findOpen.value) FindBar(b)
+        if (findOpen.value) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(MaterialTheme.colorScheme.surface)) { FindBar(b) }
     }
 }
 

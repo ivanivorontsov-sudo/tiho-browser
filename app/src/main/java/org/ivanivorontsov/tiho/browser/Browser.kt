@@ -43,6 +43,20 @@ class Browser(val app: TihoApp) {
     val dialogs = mutableStateListOf<UiDialog>()
     val snack = mutableStateOf<Snack?>(null)
     val fullscreen = mutableStateOf(false)
+    val toolbarOffset = androidx.compose.runtime.mutableFloatStateOf(0f)
+    var toolbarHeight = 0f
+    var toolbarLocked = false
+    private var lastScrollY = 0
+
+    fun showToolbar() { toolbarOffset.floatValue = 0f }
+
+    fun onScroll(t: Tab, y: Int) {
+        if (current.value !== t) return
+        val d = geckoView?.resources?.displayMetrics?.density ?: 1f
+        val py = (y * d).toInt()
+        toolbarOffset.floatValue = if (toolbarLocked) 0f else ToolbarScroll.next(toolbarOffset.floatValue, py, lastScrollY, toolbarHeight)
+        lastScrollY = py
+    }
     val findResult = mutableStateOf<String?>(null)
     val popup = mutableStateOf<Pair<WebExtension, GeckoSession>?>(null)
 
@@ -91,6 +105,8 @@ class Browser(val app: TihoApp) {
             t.session.setActive(true)
         } catch (e: Throwable) { android.util.Log.e("Tiho", "select tab", e) }
         screen.value = Screen.BROWSER
+        lastScrollY = 0
+        showToolbar()
         updateWindowSecurity()
     }
 
