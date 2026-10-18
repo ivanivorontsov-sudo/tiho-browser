@@ -99,7 +99,7 @@ jobs:
           TIHO_KEYSTORE_PASSWORD: ${{ secrets.TIHO_KEYSTORE_PASSWORD }}
           TIHO_KEY_ALIAS: ${{ secrets.TIHO_KEY_ALIAS }}
           TIHO_KEY_PASSWORD: ${{ secrets.TIHO_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon --console=plain :app:testGithubDebugUnitTest :app:testPlayDebugUnitTest :app:assembleGithubRelease :app:bundlePlayRelease -PwithX86
+        run: ./gradlew --no-daemon --console=plain :app:testGithubDebugUnitTest :app:testPlayDebugUnitTest :app:assembleGithubRelease -PwithX86 && ./gradlew --no-daemon --console=plain :app:bundlePlayRelease
 
       - name: Verify signatures and sizes
         run: |

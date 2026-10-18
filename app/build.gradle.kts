@@ -44,7 +44,7 @@ android {
     // One APK per ABI (GeckoView is ~45-60 MB per ABI). x86_64 only with -PwithX86 (emulator tests).
     splits {
         abi {
-            isEnable = true
+            isEnable = gradle.startParameter.taskNames.none { it.contains("bundle", ignoreCase = true) }
             reset()
             include("arm64-v8a", "armeabi-v7a")
             if (project.hasProperty("withX86")) include("x86_64")
