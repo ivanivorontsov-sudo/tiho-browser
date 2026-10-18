@@ -32,8 +32,9 @@ addons.mozilla.org. Есть включение/выключение, удале
 - ETP Strict: трекеры, криптомайнеры, фингерпринтеры, соцсети; `cookieBehavior=5` (Total Cookie Protection);
 - защита от фингерпринтинга: RFP (`privacy.resistFingerprinting`) по умолчанию с 2.0.8, FPP — опция. С 2.0.9 Тихо держится когорты Tor Browser:
   только встроенный RFP, без JS-подмены поверх; `sendBeacon` и `Notification` снова есть (их отсутствие выделяло);
-  при RFP выключены WebGL2 и `navigator.connection`, холст отдаёт случайные данные, высота области страницы округляется
-  вниз до 50 dp (аналог letterboxing, которого в GeckoView нет). Код из пакетов обновлений не исполняется.
+  при RFP выключены WebGL2 и `navigator.connection`, холст отдаёт случайные данные. С 2.1.0 область страницы
+  не обрезается: как в Tor Browser и Firefox для Android, RFP сообщает `screen` = `innerWidth`×`innerHeight` полного окна,
+  без собственных «ступенек» (округление до 50 dp в 2.0.9 давало редкие размеры). Код из пакетов обновлений не исполняется.
   Для платёжных доменов действуют `resistFingerprinting.exemptedDomains` и `fingerprintingProtection.granularOverrides` (`-AllTargets`);
 - HTTPS-only;
 - DoH — опция: Mozilla TRR (Cloudflare), Quad9, AdGuard; режим «только DoH» или «DoH сначала»;

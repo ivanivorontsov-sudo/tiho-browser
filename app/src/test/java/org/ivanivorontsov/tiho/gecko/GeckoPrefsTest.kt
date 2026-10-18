@@ -80,13 +80,6 @@ class GeckoPrefsTest {
         assertEquals(false, s["dom.battery.enabled"])
     }
 
-    @Test fun letterboxRoundsHeightDown() {
-        assertEquals(700f, org.ivanivorontsov.tiho.ui.letterboxHeight(742.5f, 50))
-        assertEquals(650f, org.ivanivorontsov.tiho.ui.letterboxHeight(650f, 50))
-        assertEquals(742.5f, org.ivanivorontsov.tiho.ui.letterboxHeight(742.5f, 0))
-        assertEquals(80f, org.ivanivorontsov.tiho.ui.letterboxHeight(80f, 50))
-    }
-
     @Test fun quarantineAndRestrictedDomains() {
         // nothing trusted → payment hosts are restricted for every extension (even Mozilla-recommended ones)
         val strict = GeckoPrefs.dynamic(GeckoPrefs.Config(paymentHosts = hosts, allAddons = setOf("a@x", "uBlock0@raymondhill.net")))
