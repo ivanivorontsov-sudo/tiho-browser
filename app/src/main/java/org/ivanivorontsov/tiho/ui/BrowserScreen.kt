@@ -23,7 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -99,9 +98,9 @@ private fun BrowserMain(b: Browser) {
     val tab = b.current.value
     val full = b.fullscreen.value
     val density = androidx.compose.ui.platform.LocalDensity.current
-    var barPx by remember { mutableIntStateOf(0) }
+    val barPx = org.ivanivorontsov.tiho.browser.ToolbarScroll.maxHeightPx(density.density, full)
     val locked = full || findOpen.value || tab?.payment == true || tab?.safePayment == true || tab?.isHome == true || tab?.warning?.value != null
-    val maxPx = if (full) 0 else barPx
+    val maxPx = barPx
     SideEffect {
         b.toolbarHeight = maxPx.toFloat()
         b.toolbarLocked = locked
@@ -115,7 +114,7 @@ private fun BrowserMain(b: Browser) {
         if (tab != null && tab.isHome && tab.warning.value == null) Box(Modifier.fillMaxSize().padding(top = with(density) { maxPx.toDp() })) { HomePage(b, tab) }
         (tab?.warning?.value as? Tab.Warning.Phishing)?.let { Box(Modifier.fillMaxSize().padding(top = with(density) { maxPx.toDp() })) { PhishingPage(b, tab, it) } }
         if (!full && tab != null) {
-            Column(Modifier.fillMaxWidth().onSizeChanged { barPx = it.height }.graphicsLayer { translationY = off }.background(MaterialTheme.colorScheme.surface)) {
+            Column(Modifier.fillMaxWidth().graphicsLayer { translationY = off }.background(MaterialTheme.colorScheme.surface)) {
                 TopBar(b, tab)
                 if (tab.loading.value) LinearProgressIndicator(progress = { tab.progress.floatValue }, Modifier.fillMaxWidth().height(2.dp))
                 Banners(b, tab)
@@ -133,7 +132,7 @@ private fun TopBar(b: Browser, tab: Tab) {
     var text by remember(tab.id, tab.url.value, editing) { mutableStateOf(if (editing) tab.url.value else displayUrl(tab)) }
     var menu by remember { mutableStateOf(false) }
     val bg = when { tab.payment -> BankColor.copy(alpha = 0.18f); tab.incognito -> PrivateColor.copy(alpha = 0.18f); else -> MaterialTheme.colorScheme.surfaceVariant }
-    Row(Modifier.fillMaxWidth().background(bg).padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().height(org.ivanivorontsov.tiho.browser.ToolbarScroll.HEIGHT_DP.dp).background(bg).padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         when {
             tab.payment -> AssistChip(onClick = { b.screen.value = Screen.SECURITY }, label = { Text("Банк") }, leadingIcon = { Icon(Icons.Filled.CreditCard, null) })
             tab.incognito -> Icon(Icons.Outlined.VisibilityOff, "Приватная вкладка", Modifier.padding(6.dp))

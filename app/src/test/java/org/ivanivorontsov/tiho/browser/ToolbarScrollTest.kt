@@ -15,4 +15,10 @@ class ToolbarScrollTest {
         assertEquals(0f, ToolbarScroll.next(-150f, 0, 300, 150f))
         assertEquals(0f, ToolbarScroll.next(0f, 900, 100, 0f))
     }
+
+    @Test fun dynamicHeightIsFenixToolbarOnly() {
+        assertEquals(64, ToolbarScroll.HEIGHT_DP)
+        assertEquals(192, ToolbarScroll.maxHeightPx(3f, false))
+        assertEquals(0, ToolbarScroll.maxHeightPx(3f, true))
+    }
 }
