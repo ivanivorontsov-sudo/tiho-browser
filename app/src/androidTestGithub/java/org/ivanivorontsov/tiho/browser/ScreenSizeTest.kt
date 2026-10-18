@@ -41,11 +41,16 @@ class ScreenSizeTest {
             "r();addEventListener('load',r)</script><body>t</body>"
         val (ss, port) = serve(html)
         ss.use {
-            onMain { org.ivanivorontsov.tiho.dist.Dist.setScreenSpoof(app, spoof) }
             ActivityScenario.launch(MainActivity::class.java).use {
                 val end0 = SystemClock.uptimeMillis() + 300_000
                 while (SystemClock.uptimeMillis() < end0 && onMain { app.addons.tihoExt } == null) SystemClock.sleep(250)
                 SystemClock.sleep(10_000)
+                onMain { org.ivanivorontsov.tiho.dist.Dist.setScreenSpoof(app, spoof) }
+                SystemClock.sleep(2_000)
+                val want = if (spoof) 2 else 1
+                val end1 = SystemClock.uptimeMillis() + 300_000
+                while (SystemClock.uptimeMillis() < end1 && app.addons.appliedScripts != want) SystemClock.sleep(250)
+                assertEquals("scripts applied", want, app.addons.appliedScripts)
                 onMain { app.browser!!.navigate("http://127.0.0.1:$port/") }
                 var title = ""
                 val end = SystemClock.uptimeMillis() + 480_000

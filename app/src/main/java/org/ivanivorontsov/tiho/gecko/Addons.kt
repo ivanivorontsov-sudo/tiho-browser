@@ -44,6 +44,7 @@ class Addons(private val app: TihoApp) {
     val prompt = mutableStateOf<Prompt?>(null)
     val busy = mutableStateOf<String?>(null)
     @Volatile var tihoExt: WebExtension? = null
+    @Volatile var appliedScripts = -1
         private set
     private var tihoPort: WebExtension.Port? = null
     private val main = Handler(Looper.getMainLooper())
@@ -94,7 +95,7 @@ class Addons(private val app: TihoApp) {
                             val m = message as? JSONObject ?: return
                             when (m.optString("type")) {
                                 "ready" -> pushConfig()
-                                "applied" -> Log.i("Tiho", "tihoext applied ${m.optInt("count")} scripts ${m.optJSONArray("errors")}")
+                                "applied" -> { appliedScripts = m.optInt("count"); Log.i("Tiho", "tihoext applied ${m.optInt("count")} scripts ${m.optJSONArray("errors")}") }
                             }
                         }
                         override fun onDisconnect(port: WebExtension.Port) { if (tihoPort === port) tihoPort = null }
@@ -355,6 +356,7 @@ class Addons(private val app: TihoApp) {
 
     fun pushConfig() {
         val port = tihoPort ?: return
+        appliedScripts = -1
         try {
             val cfg = UserScriptJs.config(app.extensions.scripts.toList(), { app.extensions.gmAll(it) }, app.engine.paymentBaseDomains(),
                 app.payments.guardJs(), payDetect = true)
