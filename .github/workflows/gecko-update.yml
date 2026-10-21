@@ -47,7 +47,7 @@ jobs:
           curl -fsI "https://maven.mozilla.org/maven2/org/mozilla/geckoview/geckoview/$LATEST/geckoview-$LATEST.pom" > /dev/null
           NEWER=$(printf '%s\n%s\n' "$CUR" "$LATEST" | sort -V | tail -1)
           if [ "$LATEST" != "$CUR" ] && [ "$NEWER" = "$LATEST" ] || [ "$FORCE" = "true" ]; then
-            NVC=$((VC + 1)); NVN="2.0.$((NVC - 5))"
+            NVC=$((VC + 1)); VN0=$(grep -oP '^versionName=\K.*' gecko.properties); NVN="${VN0%.*}.$(( ${VN0##*.} + 1 ))"
             sed -i "s/^geckoVersion=.*/geckoVersion=$LATEST/; s/^versionCode=.*/versionCode=$NVC/; s/^versionName=.*/versionName=$NVN/" gecko.properties
             git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit -qam "GeckoView $LATEST → Тихо $NVN ($NVC)"

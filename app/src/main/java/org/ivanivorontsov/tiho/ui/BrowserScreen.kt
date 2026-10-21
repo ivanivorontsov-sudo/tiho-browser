@@ -252,6 +252,7 @@ private fun HomePage(b: Browser, tab: Tab) {
             else -> "GeckoView ${org.ivanivorontsov.tiho.BuildConfig.GECKO_VERSION.substringBefore('.')} · uBlock Origin · строгая защита от слежки"
         }, style = MaterialTheme.typography.bodyMedium)
         Spacer(Modifier.height(20.dp))
+        QuickLinksGrid(b, tab)
         val bms = b.app.bookmarks.items
         if (bms.isNotEmpty()) {
             Text("Закладки", style = MaterialTheme.typography.titleMedium)

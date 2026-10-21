@@ -26,6 +26,7 @@ class TihoApp : Application() {
     lateinit var threats: Threats
     lateinit var extensions: Extensions
     lateinit var bookmarks: Bookmarks
+    lateinit var quickLinks: org.ivanivorontsov.tiho.data.QuickLinks
     lateinit var downloads: Downloads
     lateinit var history: org.ivanivorontsov.tiho.data.History
     lateinit var engine: Engine
@@ -48,6 +49,7 @@ class TihoApp : Application() {
         extensions = Extensions(this, prefs).also { it.load() }
         extensions.onChanged = { if (this::addons.isInitialized) addons.pushConfig() }
         bookmarks = Bookmarks(this)
+        quickLinks = org.ivanivorontsov.tiho.data.QuickLinks(this)
         downloads = Downloads(this)
         history = org.ivanivorontsov.tiho.data.History(filesDir).also { it.prune(prefs.historyDays) }
         engine = Engine(this)
