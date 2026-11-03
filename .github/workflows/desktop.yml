@@ -1,0 +1,60 @@
+name: Desktop Firefox ESR
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows x64 portable
+    runs-on: windows-latest
+    steps:
+      - name: Download Firefox ESR
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://download.mozilla.org/?product=firefox-esr-latest&os=win64&lang=en-US" -OutFile firefox.zip
+          Expand-Archive firefox.zip -DestinationPath package
+      - name: Apply Tiho policies
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package/firefox/distribution | Out-Null
+          Copy-Item desktop/distribution/policies.json package/firefox/distribution/policies.json
+          Copy-Item desktop/README.md package/README-TIHO.txt
+          $hash = (Get-FileHash package/firefox/firefox.exe -Algorithm SHA256).Hash.ToLower()
+          "firefox.exe  $hash" | Out-File package/SHA256SUMS.txt -Encoding ascii
+          Compress-Archive -Path package/firefox,package/README-TIHO.txt,package/SHA256SUMS.txt -DestinationPath Tiho-Windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tiho-Windows-x64
+          path: Tiho-Windows-x64.zip
+          retention-days: 14
+
+  linux:
+    name: Linux x86_64 portable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Firefox ESR
+        run: |
+          curl -fL "https://download.mozilla.org/?product=firefox-esr-latest&os=linux64&lang=en-US" -o firefox.tar.bz2
+          tar -xjf firefox.tar.bz2
+      - name: Apply Tiho policies and package
+        run: |
+          mkdir -p firefox/distribution
+          cp desktop/distribution/policies.json firefox/distribution/policies.json
+          cp desktop/README.md firefox/README-TIHO.txt
+          cd firefox
+          sha256sum firefox > SHA256SUMS.txt
+          cd ..
+          tar -czf Tiho-Linux-x86_64.tar.gz firefox
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tiho-Linux-x86_64
+          path: Tiho-Linux-x86_64.tar.gz
+          retention-days: 14
