@@ -43,7 +43,7 @@ class Engine(private val app: TihoApp) {
             .consoleOutput(BuildConfig.DEBUG)
             .aboutConfigEnabled(false)
             .loginAutofillEnabled(false)
-            .extensionsWebAPIEnabled(false)
+            .extensionsWebAPIEnabled(true)
             .preferredColorScheme(webColorScheme())
         runtime = GeckoRuntime.create(app, b.build())
         // The YAML config covers start-up; the same prefs are also set through the pref API (belt and braces).
