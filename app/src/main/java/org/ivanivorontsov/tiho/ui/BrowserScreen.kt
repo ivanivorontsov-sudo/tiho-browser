@@ -108,12 +108,20 @@ private fun BrowserMain(b: Browser) {
         if (locked) b.showToolbar()
     }
     val off = if (locked) 0f else b.toolbarOffset.floatValue.coerceIn(-maxPx.toFloat(), 0f)
+    val tabStripVisible = !full && !findOpen.value && b.prefs.tabBarPosition != 2 && b.tabs.isNotEmpty()
+    val stripHeight = if (tabStripVisible) 52.dp else 0.dp
+    val stripAtTop = tabStripVisible && b.prefs.tabBarPosition == 0
+    val stripAtBottom = tabStripVisible && b.prefs.tabBarPosition == 1
+    val pageTopPadding = with(density) { maxPx.toDp() } + if (stripAtTop) stripHeight else 0.dp
+    val pageBottomPadding = if (stripAtBottom) stripHeight else 0.dp
     Box(Modifier.fillMaxSize().then(if (full) Modifier else Modifier.systemBarsPadding().imePadding())) {
         AndroidView({ c -> GeckoView(c).also { b.attachView(it) } },
-            Modifier.fillMaxSize().graphicsLayer { translationY = maxPx + off },
+            Modifier.fillMaxSize()
+                .padding(top = if (stripAtTop) stripHeight else 0.dp, bottom = pageBottomPadding)
+                .graphicsLayer { translationY = maxPx + off },
             update = { gv -> b.attachView(gv); gv.setDynamicToolbarMaxHeight(maxPx) })
-        if (tab != null && tab.isHome && tab.warning.value == null) Box(Modifier.fillMaxSize().padding(top = with(density) { maxPx.toDp() })) { HomePage(b, tab) }
-        (tab?.warning?.value as? Tab.Warning.Phishing)?.let { Box(Modifier.fillMaxSize().padding(top = with(density) { maxPx.toDp() })) { PhishingPage(b, tab, it) } }
+        if (tab != null && tab.isHome && tab.warning.value == null) Box(Modifier.fillMaxSize().padding(top = pageTopPadding, bottom = pageBottomPadding)) { HomePage(b, tab) }
+        (tab?.warning?.value as? Tab.Warning.Phishing)?.let { Box(Modifier.fillMaxSize().padding(top = pageTopPadding, bottom = pageBottomPadding)) { PhishingPage(b, tab, it) } }
         if (!full && tab != null) {
             Column(Modifier.fillMaxWidth().graphicsLayer { translationY = off }.background(MaterialTheme.colorScheme.surface)) {
                 TopBar(b, tab)
@@ -121,7 +129,7 @@ private fun BrowserMain(b: Browser) {
                 Banners(b, tab)
             }
         }
-        if (!full && !findOpen.value && b.prefs.tabBarPosition != 2 && b.tabs.isNotEmpty()) {
+        if (tabStripVisible) {
             val strip = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
             if (b.prefs.tabBarPosition == 0) {
                 TabStrip(b, Modifier.align(Alignment.TopCenter).padding(top = with(density) { maxPx.toDp() }).then(strip))
