@@ -20,7 +20,7 @@
       "privacy.trackingprotection.socialtracking.enabled": { "Value": true, "Status": "locked" },
       "privacy.trackingprotection.cryptomining.enabled": { "Value": true, "Status": "locked" },
       "privacy.trackingprotection.fingerprinting.enabled": { "Value": true, "Status": "locked" },
-      "privacy.cookieBehavior": { "Value": 5, "Status": "locked" },
+      "network.cookie.cookieBehavior": { "Value": 5, "Status": "locked" },
       "dom.security.https_only_mode": { "Value": true, "Status": "locked" },
       "privacy.globalprivacycontrol.enabled": { "Value": true, "Status": "locked" },
       "privacy.resistFingerprinting": { "Value": true, "Status": "locked" },
