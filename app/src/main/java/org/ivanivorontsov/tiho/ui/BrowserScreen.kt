@@ -121,12 +121,12 @@ private fun BrowserMain(b: Browser) {
                 Banners(b, tab)
             }
         }
-        if (!full && b.prefs.tabBarPosition != 2 && b.tabs.isNotEmpty()) {
+        if (!full && !findOpen.value && b.prefs.tabBarPosition != 2 && b.tabs.isNotEmpty()) {
             val strip = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
             if (b.prefs.tabBarPosition == 0) {
                 TabStrip(b, Modifier.align(Alignment.TopCenter).padding(top = with(density) { maxPx.toDp() }).then(strip))
             } else {
-                TabStrip(b, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().then(strip))
+                TabStrip(b, Modifier.align(Alignment.BottomCenter).then(strip))
             }
         }
         if (findOpen.value) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(MaterialTheme.colorScheme.surface)) { FindBar(b) }
