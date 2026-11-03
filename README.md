@@ -1,4 +1,15 @@
-# Тихо — приватный браузер для Android на GeckoView
+# Тихо — приватный браузер
+
+Тихо разрабатывается для Android и настольных систем.
+
+- **Android:** Kotlin + Jetpack Compose + Mozilla GeckoView. Подробности реализации, сборки и защиты — ниже в этом README.
+- **ПК:** Windows x64 и Linux x86_64. Настольная сборка использует официальный Firefox ESR (Gecko) с политиками приватности Тихо и принудительной установкой uBlock Origin. Инструкции и ограничения: [desktop/README.md](desktop/README.md).
+
+Настольные сборки: GitHub Actions → **Desktop Firefox ESR** → Artifacts.
+
+---
+
+
 
 Kotlin + Jetpack Compose (Material 3), интерфейс на русском. С версии 2.0 движок — **Mozilla GeckoView**: готовый AAR
 с maven.mozilla.org, сам Gecko не компилируется (версия в `gecko.properties`). Есть настоящие **WebExtensions** с addons.mozilla.org.
