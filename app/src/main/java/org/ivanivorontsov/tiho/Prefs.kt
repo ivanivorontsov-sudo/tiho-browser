@@ -58,7 +58,9 @@ class Prefs(context: Context) {
     var theme by I("theme", 0) // 0 system, 1 light, 2 dark
     var desktopDefault by B("desktop_default", false)
     /** 0 = top tab strip, 1 = bottom tab strip, 2 = classic tabs button only. */
-    var tabBarPosition by I("tab_bar_position", 1)
+    var tabBarPosition by I("tab_bar_position", 0)
+    /** 0 = Vivaldi cards, 1 = compact cards, 2 = favicons, 3 = text tabs, 4 = minimal underline. */
+    var tabBarStyle by I("tab_bar_style", 0)
     var flagSecure by B("flag_secure", false)
 
     // --- Data / private mode
