@@ -19,8 +19,8 @@ jobs:
       - name: Download Firefox ESR
         shell: pwsh
         run: |
-          Invoke-WebRequest "https://download.mozilla.org/?product=firefox-esr-latest&os=win64-zip&lang=en-US" -OutFile firefox.zip
-          Expand-Archive firefox.zip -DestinationPath staging
+          Invoke-WebRequest "https://download.mozilla.org/?product=firefox-esr-latest&os=win64&lang=en-US" -OutFile firefox-setup.exe
+          7z x firefox-setup.exe -ostaging -y
           $browser = Get-ChildItem staging -Filter firefox.exe -Recurse | Select-Object -First 1
           if (-not $browser) { throw "Firefox executable not found in Mozilla ZIP" }
           New-Item -ItemType Directory -Force package/firefox/distribution | Out-Null
@@ -45,7 +45,7 @@ jobs:
     steps:
       - name: Download Firefox ESR
         run: |
-          curl -fL "https://download.mozilla.org/?product=firefox-esr-latest&os=linux64&lang=en-US" -o firefox.tar.bz2
+          curl -fL "https://download.mozilla.org/?product=firefox-esr-latest&os=linux64&lang=en-US" -o firefox.tar.xz
           tar -xjf firefox.tar.bz2
       - name: Apply Tiho policies and package
         run: |
