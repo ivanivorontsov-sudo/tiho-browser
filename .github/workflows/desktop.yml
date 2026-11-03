@@ -19,13 +19,16 @@ jobs:
       - name: Download Firefox ESR
         shell: pwsh
         run: |
-          Invoke-WebRequest "https://download.mozilla.org/?product=firefox-esr-latest&os=win64&lang=en-US" -OutFile firefox.zip
-          Expand-Archive firefox.zip -DestinationPath package
+          Invoke-WebRequest "https://download.mozilla.org/?product=firefox-esr-latest&os=win64-zip&lang=en-US" -OutFile firefox.zip
+          Expand-Archive firefox.zip -DestinationPath staging
+          $browser = Get-ChildItem staging -Filter firefox.exe -Recurse | Select-Object -First 1
+          if (-not $browser) { throw "Firefox executable not found in Mozilla ZIP" }
+          New-Item -ItemType Directory -Force package/firefox/distribution | Out-Null
+          Copy-Item "$($browser.Directory.FullName)/*" package/firefox -Recurse -Force
       - name: Apply Tiho policies
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force package/firefox/distribution | Out-Null
-          Copy-Item desktop/distribution/policies.json package/firefox/distribution/policies.json
+          Copy-Item desktop/distribution/policies.json package/firefox/distribution/policies.json -Force
           Copy-Item desktop/README.md package/README-TIHO.txt
           $hash = (Get-FileHash package/firefox/firefox.exe -Algorithm SHA256).Hash.ToLower()
           "firefox.exe  $hash" | Out-File package/SHA256SUMS.txt -Encoding ascii
