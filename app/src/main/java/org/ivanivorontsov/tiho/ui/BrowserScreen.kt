@@ -145,51 +145,67 @@ private fun BrowserMain(b: Browser) {
 
 @Composable
 private fun TabStrip(b: Browser, modifier: Modifier = Modifier) {
-    val tabRed = Color(0xFFE53935)
+    val style = b.prefs.tabBarStyle.coerceIn(0, 4)
+    val red = Color(0xFFE53935)
+    val inactive = Color(0xFFFF7773)
+    val barHeight = if (style == 1) 48.dp else 58.dp
     Row(
-        modifier.fillMaxWidth().height(58.dp).background(tabRed).padding(horizontal = 5.dp, vertical = 5.dp),
+        modifier.fillMaxWidth().height(barHeight).background(if (style == 4) MaterialTheme.colorScheme.surface else red)
+            .padding(horizontal = 5.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LazyRow(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(start = 5.dp, end = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (style == 1) 2.dp else 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items(b.tabs.toList(), key = { it.id }) { t ->
                 val selected = t === b.current.value
+                val title = t.title.value.ifBlank { if (t.isHome) "Новая вкладка" else displayUrl(t) }
+                val icon = when { t.payment -> Icons.Outlined.CreditCard; t.incognito -> Icons.Outlined.VisibilityOff; else -> Icons.Outlined.Public }
+                val cardWidth = when (style) { 0 -> 142.dp; 1 -> 94.dp; 2 -> 48.dp; 3 -> 126.dp; else -> 112.dp }
                 Surface(
                     onClick = { b.select(t) },
-                    color = if (selected) Color.White else Color(0xFFFF7773),
-                    contentColor = if (selected) Color(0xFF202020) else Color.White,
-                    shape = MaterialTheme.shapes.medium,
-                    modifier = Modifier.width(112.dp).fillMaxHeight(),
+                    color = when (style) {
+                        4 -> MaterialTheme.colorScheme.surface
+                        else -> if (selected) Color.White else inactive
+                    },
+                    contentColor = when (style) {
+                        4 -> if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> if (selected) Color(0xFF202020) else Color.White
+                    },
+                    shape = if (style == 4) MaterialTheme.shapes.small else MaterialTheme.shapes.medium,
+                    modifier = Modifier.width(cardWidth).fillMaxHeight(),
                 ) {
-                    Row(
-                        Modifier.fillMaxSize().padding(start = 7.dp, end = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            when { t.payment -> Icons.Outlined.CreditCard; t.incognito -> Icons.Outlined.VisibilityOff; else -> Icons.Outlined.Public },
-                            contentDescription = null,
-                            modifier = Modifier.size(19.dp),
-                        )
-                        Text(
-                            t.title.value.ifBlank { if (t.isHome) "Новая вкладка" else displayUrl(t) },
-                            Modifier.weight(1f).padding(start = 6.dp),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        IconButton(onClick = { b.closeTab(t) }, modifier = Modifier.size(30.dp)) {
-                            Icon(Icons.Filled.Close, "Закрыть вкладку", modifier = Modifier.size(17.dp))
+                    when (style) {
+                        2 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(icon, contentDescription = title, modifier = Modifier.size(21.dp))
+                        }
+                        4 -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(icon, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Text(title, Modifier.weight(1f).padding(start = 5.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
+                                IconButton(onClick = { b.closeTab(t) }, modifier = Modifier.size(25.dp)) {
+                                    Icon(Icons.Filled.Close, "Закрыть вкладку", modifier = Modifier.size(14.dp))
+                                }
+                            }
+                            Box(Modifier.fillMaxWidth().height(if (selected) 3.dp else 1.dp).background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant))
+                        }
+                        else -> Row(Modifier.fillMaxSize().padding(start = 7.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(icon, contentDescription = null, modifier = Modifier.size(if (style == 1) 17.dp else 19.dp))
+                            Text(title, Modifier.weight(1f).padding(start = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = if (style == 1) MaterialTheme.typography.labelMedium else MaterialTheme.typography.bodyMedium)
+                            IconButton(onClick = { b.closeTab(t) }, modifier = Modifier.size(if (style == 1) 25.dp else 30.dp)) {
+                                Icon(Icons.Filled.Close, "Закрыть вкладку", modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
             }
         }
         IconButton(onClick = { b.newTab() }, modifier = Modifier.size(42.dp)) {
-            Icon(Icons.Filled.Add, "Новая вкладка", tint = Color.White, modifier = Modifier.size(27.dp))
+            Icon(Icons.Filled.Add, "Новая вкладка", tint = if (style == 4) MaterialTheme.colorScheme.onSurface else Color.White, modifier = Modifier.size(27.dp))
         }
     }
 }
