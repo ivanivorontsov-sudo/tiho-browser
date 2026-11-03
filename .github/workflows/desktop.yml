@@ -46,7 +46,7 @@ jobs:
       - name: Download Firefox ESR
         run: |
           curl -fL "https://download.mozilla.org/?product=firefox-esr-latest&os=linux64&lang=en-US" -o firefox.tar.xz
-          tar -xjf firefox.tar.bz2
+          tar -xJf firefox.tar.xz
       - name: Apply Tiho policies and package
         run: |
           mkdir -p firefox/distribution
