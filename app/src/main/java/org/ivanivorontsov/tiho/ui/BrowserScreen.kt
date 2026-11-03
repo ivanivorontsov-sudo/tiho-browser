@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -107,20 +108,105 @@ private fun BrowserMain(b: Browser) {
         if (locked) b.showToolbar()
     }
     val off = if (locked) 0f else b.toolbarOffset.floatValue.coerceIn(-maxPx.toFloat(), 0f)
+    val tabStripVisible = !full && !findOpen.value && b.prefs.tabBarPosition != 2 && b.tabs.isNotEmpty()
+    val stripHeight = if (tabStripVisible) 58.dp else 0.dp
+    val stripAtTop = tabStripVisible && b.prefs.tabBarPosition == 0
+    val stripAtBottom = tabStripVisible && b.prefs.tabBarPosition == 1
+    val pageTopPadding = with(density) { maxPx.toDp() } + if (stripAtTop) stripHeight else 0.dp
+    val pageBottomPadding = if (stripAtBottom) stripHeight else 0.dp
     Box(Modifier.fillMaxSize().then(if (full) Modifier else Modifier.systemBarsPadding().imePadding())) {
         AndroidView({ c -> GeckoView(c).also { b.attachView(it) } },
-            Modifier.fillMaxSize().graphicsLayer { translationY = maxPx + off },
+            Modifier.fillMaxSize()
+                .padding(top = if (stripAtTop) stripHeight else 0.dp, bottom = pageBottomPadding)
+                .graphicsLayer { translationY = maxPx + off },
             update = { gv -> b.attachView(gv); gv.setDynamicToolbarMaxHeight(maxPx) })
-        if (tab != null && tab.isHome && tab.warning.value == null) Box(Modifier.fillMaxSize().padding(top = with(density) { maxPx.toDp() })) { HomePage(b, tab) }
-        (tab?.warning?.value as? Tab.Warning.Phishing)?.let { Box(Modifier.fillMaxSize().padding(top = with(density) { maxPx.toDp() })) { PhishingPage(b, tab, it) } }
+        if (tab != null && tab.isHome && tab.warning.value == null) Box(Modifier.fillMaxSize().padding(top = pageTopPadding, bottom = pageBottomPadding)) { HomePage(b, tab) }
+        (tab?.warning?.value as? Tab.Warning.Phishing)?.let { Box(Modifier.fillMaxSize().padding(top = pageTopPadding, bottom = pageBottomPadding)) { PhishingPage(b, tab, it) } }
         if (!full && tab != null) {
-            Column(Modifier.fillMaxWidth().graphicsLayer { translationY = off }.background(MaterialTheme.colorScheme.surface)) {
+            Column(Modifier.fillMaxWidth()
+                .padding(top = if (stripAtTop) stripHeight else 0.dp)
+                .graphicsLayer { translationY = off }
+                .background(MaterialTheme.colorScheme.surface)) {
                 TopBar(b, tab)
                 if (tab.loading.value) LinearProgressIndicator(progress = { tab.progress.floatValue }, Modifier.fillMaxWidth().height(2.dp))
                 Banners(b, tab)
             }
         }
+        if (tabStripVisible) {
+            if (stripAtTop) {
+                TabStrip(b, Modifier.align(Alignment.TopCenter))
+            } else {
+                TabStrip(b, Modifier.align(Alignment.BottomCenter))
+            }
+        }
         if (findOpen.value) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(MaterialTheme.colorScheme.surface)) { FindBar(b) }
+    }
+}
+
+@Composable
+private fun TabStrip(b: Browser, modifier: Modifier = Modifier) {
+    val style = b.prefs.tabBarStyle.coerceIn(0, 4)
+    val red = Color(0xFFE53935)
+    val inactive = Color(0xFFFF7773)
+    val barHeight = if (style == 1) 48.dp else 58.dp
+    Row(
+        modifier.fillMaxWidth().height(barHeight).background(if (style == 4) MaterialTheme.colorScheme.surface else red)
+            .padding(horizontal = 5.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(start = 5.dp, end = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (style == 1) 2.dp else 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items(b.tabs.toList(), key = { it.id }) { t ->
+                val selected = t === b.current.value
+                val title = t.title.value.ifBlank { if (t.isHome) "Новая вкладка" else displayUrl(t) }
+                val icon = when { t.payment -> Icons.Outlined.CreditCard; t.incognito -> Icons.Outlined.VisibilityOff; else -> Icons.Outlined.Public }
+                val cardWidth = when (style) { 0 -> 142.dp; 1 -> 94.dp; 2 -> 48.dp; 3 -> 126.dp; else -> 112.dp }
+                Surface(
+                    onClick = { b.select(t) },
+                    color = when (style) {
+                        4 -> MaterialTheme.colorScheme.surface
+                        else -> if (selected) Color.White else inactive
+                    },
+                    contentColor = when (style) {
+                        4 -> if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> if (selected) Color(0xFF202020) else Color.White
+                    },
+                    shape = if (style == 4) MaterialTheme.shapes.small else MaterialTheme.shapes.medium,
+                    modifier = Modifier.width(cardWidth).fillMaxHeight(),
+                ) {
+                    when (style) {
+                        2 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(icon, contentDescription = title, modifier = Modifier.size(21.dp))
+                        }
+                        4 -> Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(icon, contentDescription = null, modifier = Modifier.size(17.dp))
+                                Text(title, Modifier.weight(1f).padding(start = 5.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelMedium)
+                                IconButton(onClick = { b.closeTab(t) }, modifier = Modifier.size(25.dp)) {
+                                    Icon(Icons.Filled.Close, "Закрыть вкладку", modifier = Modifier.size(14.dp))
+                                }
+                            }
+                            Box(Modifier.fillMaxWidth().height(if (selected) 3.dp else 1.dp).background(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant))
+                        }
+                        else -> Row(Modifier.fillMaxSize().padding(start = 7.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(icon, contentDescription = null, modifier = Modifier.size(if (style == 1) 17.dp else 19.dp))
+                            Text(title, Modifier.weight(1f).padding(start = 6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = if (style == 1) MaterialTheme.typography.labelMedium else MaterialTheme.typography.bodyMedium)
+                            IconButton(onClick = { b.closeTab(t) }, modifier = Modifier.size(if (style == 1) 25.dp else 30.dp)) {
+                                Icon(Icons.Filled.Close, "Закрыть вкладку", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        IconButton(onClick = { b.newTab() }, modifier = Modifier.size(42.dp)) {
+            Icon(Icons.Filled.Add, "Новая вкладка", tint = if (style == 4) MaterialTheme.colorScheme.onSurface else Color.White, modifier = Modifier.size(27.dp))
+        }
     }
 }
 

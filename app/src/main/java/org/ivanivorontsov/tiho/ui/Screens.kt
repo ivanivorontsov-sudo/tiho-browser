@@ -37,6 +37,20 @@ fun SettingsScreen(b: Browser) {
         item { ChoiceRow("Тема", listOf(0 to "Как в системе", 1 to "Светлая", 2 to "Тёмная"), p.theme) { p.theme = it } }
         item { SwitchRow("Версия для ПК по умолчанию", null, p.desktopDefault) { p.desktopDefault = it } }
         item { SwitchRow("Блокировать всплывающие окна", null, p.blockPopups) { p.blockPopups = it } }
+        item { ChoiceRow("Панель вкладок", listOf(
+            0 to "Сверху — под адресной строкой",
+            1 to "Снизу — как в Vivaldi",
+            2 to "Скрыта — только кнопка счётчика",
+        ), p.tabBarPosition) { p.tabBarPosition = it } }
+        item { ChoiceRow("Стиль вкладок", listOf(
+            0 to "Карточки Vivaldi",
+            1 to "Компактные карточки",
+            2 to "Только значки сайтов",
+            3 to "Текстовые вкладки",
+            4 to "Минималистичная полоса",
+        ), p.tabBarStyle) { p.tabBarStyle = it } }
+        item { Text("На панели можно переключаться между страницами, закрывать их и создавать новые. Полный список вкладок и режимы «Банк»/«Приватная» доступны на экране вкладок.",
+            Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
 
         item { SectionHeader("Приватность (настройки Gecko в духе Arkenfox / IronFox)") }
         item { SwitchRow("Строгая защита от отслеживания (ETP Strict)", "Трекеры, майнеры, фингерпринтеры, соцсети; полная защита cookie (Total Cookie Protection)", p.etpStrict) { p.etpStrict = it } }
