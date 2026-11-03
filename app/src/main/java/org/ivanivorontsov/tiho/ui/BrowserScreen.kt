@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -120,7 +121,57 @@ private fun BrowserMain(b: Browser) {
                 Banners(b, tab)
             }
         }
+        if (!full && b.prefs.tabBarPosition != 2 && b.tabs.isNotEmpty()) {
+            val strip = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+            if (b.prefs.tabBarPosition == 0) {
+                TabStrip(b, Modifier.align(Alignment.TopCenter).padding(top = with(density) { maxPx.toDp() }).then(strip))
+            } else {
+                TabStrip(b, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().then(strip))
+            }
+        }
         if (findOpen.value) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(MaterialTheme.colorScheme.surface)) { FindBar(b) }
+    }
+}
+
+@Composable
+private fun TabStrip(b: Browser, modifier: Modifier = Modifier) {
+    Row(modifier.height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            items(b.tabs.toList(), key = { it.id }) { t ->
+                val selected = t === b.current.value
+                Surface(
+                    onClick = { b.select(t) },
+                    color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.widthIn(min = 104.dp, max = 176.dp).height(38.dp),
+                ) {
+                    Row(Modifier.padding(start = 10.dp, end = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            when { t.payment -> Icons.Outlined.CreditCard; t.incognito -> Icons.Outlined.VisibilityOff; else -> Icons.Outlined.Public },
+                            contentDescription = null, modifier = Modifier.size(15.dp),
+                            tint = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            t.title.value.ifBlank { if (t.isHome) "Новая вкладка" else displayUrl(t) },
+                            Modifier.weight(1f).padding(horizontal = 6.dp),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        IconButton(onClick = { b.closeTab(t) }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Filled.Close, "Закрыть вкладку", modifier = Modifier.size(15.dp))
+                        }
+                    }
+                }
+            }
+        }
+        IconButton(onClick = { b.newTab() }, modifier = Modifier.size(42.dp)) { Icon(Icons.Filled.Add, "Новая вкладка") }
+        IconButton(onClick = { b.screen.value = Screen.TABS }, modifier = Modifier.size(42.dp)) { Icon(Icons.Filled.Tab, "Все вкладки") }
     }
 }
 
