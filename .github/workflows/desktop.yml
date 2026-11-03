@@ -16,6 +16,7 @@ jobs:
     name: Windows x64 portable
     runs-on: windows-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download Firefox ESR
         shell: pwsh
         run: |
@@ -43,6 +44,7 @@ jobs:
     name: Linux x86_64 portable
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Download Firefox ESR
         run: |
           curl -fL "https://download.mozilla.org/?product=firefox-esr-latest&os=linux64&lang=en-US" -o firefox.tar.xz
