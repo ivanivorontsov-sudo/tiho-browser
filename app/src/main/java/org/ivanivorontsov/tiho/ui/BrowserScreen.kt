@@ -109,7 +109,7 @@ private fun BrowserMain(b: Browser) {
     }
     val off = if (locked) 0f else b.toolbarOffset.floatValue.coerceIn(-maxPx.toFloat(), 0f)
     val tabStripVisible = !full && !findOpen.value && b.prefs.tabBarPosition != 2 && b.tabs.isNotEmpty()
-    val stripHeight = if (tabStripVisible) 58.dp else 0.dp
+    val stripHeight = if (!tabStripVisible) 0.dp else if (b.prefs.tabBarStyle.coerceIn(0, 4) == 1) 48.dp else 58.dp
     val stripAtTop = tabStripVisible && b.prefs.tabBarPosition == 0
     val stripAtBottom = tabStripVisible && b.prefs.tabBarPosition == 1
     val pageTopPadding = with(density) { maxPx.toDp() } + if (stripAtTop) stripHeight else 0.dp
