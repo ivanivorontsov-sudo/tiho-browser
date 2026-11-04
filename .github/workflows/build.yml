@@ -129,7 +129,7 @@ jobs:
           name: test-report
           path: app/build/reports/tests
           if-no-files-found: ignore
-          retention-days: 3
+          retention-days: 1
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         continue-on-error: true
@@ -137,7 +137,7 @@ jobs:
           name: tiho-browser-apk
           path: dist/*
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         continue-on-error: true
@@ -145,7 +145,7 @@ jobs:
           name: tiho-browser-x86_64-test-apk
           path: testdist/*
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         continue-on-error: true
@@ -153,7 +153,7 @@ jobs:
           name: tiho-browser-play-aab
           path: app/build/outputs/bundle/playRelease/*.aab
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
       - name: GitHub Release (tiho-browser)
         if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.publish
@@ -162,16 +162,18 @@ jobs:
         run: |
           TAG="v$VERSION"
           NOTES="Тихо $VERSION на GeckoView $GV (готовый AAR с maven.mozilla.org). APK для arm64-v8a и armeabi-v7a (+ x86_64 для эмуляторов/Chromebook), подписаны ключом privbrowser (RSA-4096), SHA-256 сертификата: CA:8B:DA:71:17:F3:99:86:2F:C7:E5:1D:F6:B7:BA:25:83:95:DD:CB:86:56:4D:D0:E2:5E:19:16:88:3B:AB:DD. Сборка из $(git rev-parse --short HEAD)."
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" dist/* testdist/* --clobber
-            gh release edit "$TAG" --notes "$NOTES"
-          else
-            # An existing tag (tag push / gecko-update / dispatch with ref=vX) is used as is: passing --target for a commit whose
-            # .github/workflows differ from main's tip makes the Releases API demand `workflows: write` (403 for GITHUB_TOKEN).
+          # Idempotent + retries: the Releases API sometimes answers HTTP 500 (2026-11-04); create without assets, then upload.
+          retry() { local i; for i in 1 2 3 4 5; do "$@" && return 0; echo "::warning::attempt $i failed: $1 $2 $3"; sleep $((i*15)); done; return 1; }
+          ensure_release() {
+            gh release view "$TAG" > /dev/null 2>&1 && return 0
             TARGET=()
+            # Existing tag is used as is (passing --target for a commit with different workflows needs `workflows: write`).
             git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null || TARGET=(--target "$(git rev-parse HEAD)")
-            gh release create "$TAG" dist/* testdist/* --title "Тихо $VERSION" --notes "$NOTES" "${TARGET[@]}"
-          fi
+            gh release create "$TAG" --title "Тихо $VERSION" --notes "$NOTES" "${TARGET[@]}" || { sleep 5; gh release view "$TAG" > /dev/null 2>&1; }
+          }
+          retry ensure_release
+          retry gh release upload "$TAG" dist/* testdist/* --clobber
+          retry gh release edit "$TAG" --notes "$NOTES" --draft=false
 
       - name: Publish to tiho-updates (update-v2.json signed with the CI key)
         if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || inputs.publish
