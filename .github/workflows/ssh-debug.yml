@@ -1,0 +1,16 @@
+name: ssh-debug
+on: workflow_dispatch
+permissions: {}
+jobs:
+  ssh:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          DEPLOY_KEY: ${{ secrets.TIHO_UPDATES_DEPLOY_KEY }}
+        run: |
+          mkdir -p ~/.ssh && printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/k && chmod 600 ~/.ssh/k
+          echo "lines=$(wc -l < ~/.ssh/k) bytes=$(wc -c < ~/.ssh/k) hdr=$(grep -c "^-----BEGIN" ~/.ssh/k) ftr=$(grep -c "^-----END" ~/.ssh/k) cr=$(grep -c $'\r' ~/.ssh/k || true)"
+          ssh-keygen -lf ~/.ssh/k || echo "ssh-keygen cannot parse key"
+          ssh-keygen -yf ~/.ssh/k > /tmp/p.pub && ssh-keygen -lf /tmp/p.pub || true
+          ssh -vT -i ~/.ssh/k -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new git@github.com 2>&1 | grep -vi "^debug1: \(Reading\|Connecting\|kex\|SSH2\)" | tail -25 || true
+          rm -f ~/.ssh/k
