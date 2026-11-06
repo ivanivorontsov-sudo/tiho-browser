@@ -43,7 +43,7 @@
   <form method="dialog" id="tile-form">
     <h2>Новая плитка</h2>
     <label>Название<input id="tile-title" maxlength="32" required placeholder="Например, Почта"></label>
-    <label>Адрес сайта<input id="tile-url" type="url" required placeholder="https://example.com"></label>
+    <label>Адрес сайта<input id="tile-url" type="text" required inputmode="url" placeholder="https://example.com"></label>
     <div class="dialog-actions"><button value="cancel" class="quiet">Отмена</button><button id="save" value="default">Сохранить</button></div>
   </form>
 </dialog>
@@ -58,7 +58,7 @@ $('search').addEventListener('submit',e=>{e.preventDefault();const q=$('query').
 function render(){ $('tiles').replaceChildren();tiles.forEach(([name,url,letter],i)=>{const a=document.createElement('a');a.className='tile';a.href=url;const icon=document.createElement('span');icon.className='tile-icon';icon.textContent=letter||name[0].toUpperCase();const title=document.createElement('span');title.textContent=name;a.append(icon,title);const del=document.createElement('button');del.className='remove';del.textContent='×';del.title='Удалить';del.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();tiles.splice(i,1);persist()});a.append(del);$('tiles').append(a)})}
 function persist(){localStorage.setItem('tiho.tiles',JSON.stringify(tiles));render()}
 $('add').addEventListener('click',()=>{$('tile-form').reset();$('editor').showModal();$('tile-title').focus()});
-$('tile-form').addEventListener('submit',e=>{if(e.submitter?.id!=='save')return;e.preventDefault();let url=$('tile-url').value.trim();if(!/^https?:\/\//i.test(url))url='https://'+url;try{url=new URL(url).href}catch{return}tiles.push([$ ('tile-title').value.trim(),url,$('tile-title').value.trim().slice(0,1).toUpperCase()]);persist();$('editor').close()});
+$('tile-form').addEventListener('submit',e=>{if(e.submitter?.id!=='save')return;e.preventDefault();let url=$('tile-url').value.trim();if(!/^https?:\/\//i.test(url))url='https://'+url;try{url=new URL(url).href}catch{return}tiles.push([$('tile-title').value.trim(),url,$('tile-title').value.trim().slice(0,1).toUpperCase()]);persist();$('editor').close()});
 render();
 </script>
 </body></html>
