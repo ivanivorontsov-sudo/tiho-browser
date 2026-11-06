@@ -59,6 +59,8 @@ jobs:
         run: |
           Copy-Item desktop/distribution/policies.json package/firefox/distribution/policies.json -Force
           Copy-Item desktop/ui/* package/ui/ -Recurse -Force
+          Copy-Item desktop/launchers/Tiho-Bank.cmd package/Tiho-Bank.cmd
+          Copy-Item desktop/launchers/Tiho-Private.cmd package/Tiho-Private.cmd
           Copy-Item desktop/README.md package/README-TIHO.txt
           @'
           @echo off
@@ -72,7 +74,7 @@ jobs:
           '@ | Set-Content package/Tiho.cmd -Encoding ascii
           $hash = (Get-FileHash package/firefox/firefox.exe -Algorithm SHA256).Hash.ToLower()
           "firefox.exe  $hash" | Out-File package/SHA256SUMS.txt -Encoding ascii
-          Compress-Archive -Path package/firefox,package/ui,package/Tiho.cmd,package/README-TIHO.txt,package/SHA256SUMS.txt -DestinationPath Tiho-Windows-x64.zip
+          Compress-Archive -Path package/firefox,package/ui,package/Tiho.cmd,package/Tiho-Bank.cmd,package/Tiho-Private.cmd,package/README-TIHO.txt,package/SHA256SUMS.txt -DestinationPath Tiho-Windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: Tiho-Windows-x64
@@ -113,6 +115,10 @@ jobs:
           cp -a desktop/ui/. "$ROOT/opt/tiho/ui/"
           install -m 0644 desktop/tiho-browser.svg "$ROOT/usr/share/icons/hicolor/scalable/apps/tiho-browser.svg"
           install -m 0644 desktop/README.md "$ROOT/usr/share/doc/tiho-browser/README"
+          install -m 0755 desktop/launchers/tiho-bank "$ROOT/usr/bin/tiho-bank"
+          install -m 0755 desktop/launchers/tiho-private "$ROOT/usr/bin/tiho-private"
+          install -m 0644 desktop/launchers/tiho-bank.desktop "$ROOT/usr/share/applications/tiho-bank.desktop"
+          install -m 0644 desktop/launchers/tiho-private.desktop "$ROOT/usr/share/applications/tiho-private.desktop"
           cat > "$ROOT/usr/bin/tiho" <<'LAUNCHER'
           #!/bin/sh
           set -eu
@@ -160,7 +166,7 @@ jobs:
           XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho --headless --window-size=1280,900 --screenshot "$SMOKE_DIR/tiho.png" "file:///opt/tiho/ui/index.html"
           test -s "$SMOKE_DIR/tiho.png"
           test "$(stat -c %s "$SMOKE_DIR/tiho.png")" -gt 1000
-          test -f "$SMOKE_DIR/config/tiho/profile/prefs.js" || test -d "$SMOKE_DIR/config/tiho/profile"
+          test -f "$SMOKE_DIR/config/tiho/profile/prefs.js" || test -d "$SMOKE_DIR/config/tiho/profile"\n          test -d "$SMOKE_DIR/config/tiho/bank-profile"
           mkdir -p unpacked
           dpkg-deb --extract Tiho-Linux-x86_64.deb unpacked
           test -x unpacked/opt/tiho/firefox/firefox
