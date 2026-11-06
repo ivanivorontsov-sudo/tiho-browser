@@ -157,20 +157,29 @@ jobs:
           dpkg-deb --build --root-owner-group "$ROOT" Tiho-Linux-x86_64.deb
           dpkg-deb --info Tiho-Linux-x86_64.deb
           desktop-file-validate "$ROOT/usr/share/applications/tiho-browser.desktop"
-          shellcheck "$ROOT/usr/bin/tiho"
+          desktop-file-validate "$ROOT/usr/share/applications/tiho-bank.desktop"
+          desktop-file-validate "$ROOT/usr/share/applications/tiho-private.desktop"
+          shellcheck "$ROOT/usr/bin/tiho" "$ROOT/usr/bin/tiho-bank" "$ROOT/usr/bin/tiho-private"
           lintian --fail-on error Tiho-Linux-x86_64.deb
           sudo apt-get install -y ./Tiho-Linux-x86_64.deb
           test -x /usr/bin/tiho
-          tiho --headless --version
+          test -x /usr/bin/tiho-bank
+          test -x /usr/bin/tiho-private
           SMOKE_DIR="$(mktemp -d)"
+          tiho --headless --version
+          XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho-bank --headless --version
+          XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho-private --headless --version
           XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho --headless --window-size=1280,900 --screenshot "$SMOKE_DIR/tiho.png" "file:///opt/tiho/ui/index.html"
           test -s "$SMOKE_DIR/tiho.png"
           test "$(stat -c %s "$SMOKE_DIR/tiho.png")" -gt 1000
-          test -f "$SMOKE_DIR/config/tiho/profile/prefs.js" || test -d "$SMOKE_DIR/config/tiho/profile"\n          test -d "$SMOKE_DIR/config/tiho/bank-profile"
+          test -d "$SMOKE_DIR/config/tiho/profile"
+          test -d "$SMOKE_DIR/config/tiho/bank-profile"
           mkdir -p unpacked
           dpkg-deb --extract Tiho-Linux-x86_64.deb unpacked
           test -x unpacked/opt/tiho/firefox/firefox
           test -x unpacked/usr/bin/tiho
+          test -x unpacked/usr/bin/tiho-bank
+          test -x unpacked/usr/bin/tiho-private
           test -f unpacked/opt/tiho/firefox/distribution/policies.json
           test -f unpacked/opt/tiho/ui/index.html
           sha256sum Tiho-Linux-x86_64.deb > SHA256SUMS-tiho-linux.txt
