@@ -172,12 +172,15 @@ jobs:
           test -x /usr/bin/tiho-bank
           test -x /usr/bin/tiho-private
           SMOKE_DIR="$(mktemp -d)"
-          XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho --headless --version
-          XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho-bank --headless --version
-          XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho-private --headless --version
-          XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho --headless --window-size=1280,900 --screenshot "$SMOKE_DIR/tiho.png" "file:///opt/tiho/ui/index.html"
-          test -s "$SMOKE_DIR/tiho.png"
-          test "$(stat -c %s "$SMOKE_DIR/tiho.png")" -gt 1000
+          XDG_CONFIG_HOME="$SMOKE_DIR/config" timeout 30s tiho --headless --version
+          XDG_CONFIG_HOME="$SMOKE_DIR/config" timeout 30s tiho-bank --headless --version
+          XDG_CONFIG_HOME="$SMOKE_DIR/config" timeout 30s tiho-private --headless --version
+          (
+            cd "$SMOKE_DIR"
+            XDG_CONFIG_HOME="$SMOKE_DIR/config" timeout 60s tiho --headless --window-size=1280,900 --screenshot "file:///opt/tiho/ui/index.html"
+          )
+          test -s "$SMOKE_DIR/screenshot.png"
+          test "$(stat -c %s "$SMOKE_DIR/screenshot.png")" -gt 1000
           test -d "$SMOKE_DIR/config/tiho/profile"
           test -d "$SMOKE_DIR/config/tiho/bank-profile"
           mkdir -p unpacked
