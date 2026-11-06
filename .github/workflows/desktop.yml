@@ -83,6 +83,7 @@ jobs:
 
   linux:
     name: Linux x86_64 DEB package
+    needs: [ui-tests, windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -206,17 +207,30 @@ jobs:
             Tiho-Linux-x86_64.deb
             SHA256SUMS-tiho-linux.txt
           retention-days: 14
-      - name: Publish versioned desktop release
+      - name: Download Windows portable package for release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/download-artifact@v4
+        with:
+          name: Tiho-Windows-x64
+          path: release-assets
+      - name: Publish complete desktop release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           FIREFOX_VERSION: ${{ steps.build_deb.outputs.firefox_version }}
         run: |
-          TAG="desktop-v${FIREFOX_VERSION}"
-          NOTES="Тихо для Linux x86_64: Tiho-Linux-x86_64.deb для Debian 13, Ubuntu и совместимых систем. Установка: sudo apt install ./Tiho-Linux-x86_64.deb. SHA-256 опубликован в SHA256SUMS-tiho-linux.txt. Windows x64: Tiho-Windows-x64.zip."
+          set -euo pipefail
+          mkdir -p release-assets
+          cp Tiho-Linux-x86_64.deb SHA256SUMS-tiho-linux.txt release-assets/
+          (cd release-assets && sha256sum Tiho-Windows-x64.zip Tiho-Linux-x86_64.deb > SHA256SUMS-tiho-desktop.txt)
+          TAG="desktop-v${FIREFOX_VERSION}-tiho"
+          NOTES="Тихо для ПК на базе Firefox ESR ${FIREFOX_VERSION}. Windows x64: портативный Tiho-Windows-x64.zip. Linux x86_64: Tiho-Linux-x86_64.deb для Debian 13, Ubuntu и совместимых систем. Установка: sudo apt install ./Tiho-Linux-x86_64.deb. SHA-256 для обоих пакетов — в SHA256SUMS-tiho-desktop.txt; контрольная сумма Linux также в SHA256SUMS-tiho-linux.txt. Android-релиз не затрагивается."
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" Tiho-Linux-x86_64.deb SHA256SUMS-tiho-linux.txt --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$TAG" --title "Тихо $FIREFOX_VERSION для ПК" --notes "$NOTES" --repo "$GITHUB_REPOSITORY"
+            gh release upload "$TAG" release-assets/Tiho-Windows-x64.zip release-assets/Tiho-Linux-x86_64.deb release-assets/SHA256SUMS-tiho-linux.txt release-assets/SHA256SUMS-tiho-desktop.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --title "Тихо ${FIREFOX_VERSION} для ПК" --notes "$NOTES" --repo "$GITHUB_REPOSITORY"
           else
-            gh release create "$TAG" Tiho-Linux-x86_64.deb SHA256SUMS-tiho-linux.txt --title "Тихо $FIREFOX_VERSION для ПК" --notes "$NOTES" --repo "$GITHUB_REPOSITORY"
+            gh release create "$TAG" release-assets/Tiho-Windows-x64.zip release-assets/Tiho-Linux-x86_64.deb release-assets/SHA256SUMS-tiho-linux.txt release-assets/SHA256SUMS-tiho-desktop.txt --title "Тихо ${FIREFOX_VERSION} для ПК" --notes "$NOTES" --repo "$GITHUB_REPOSITORY"
           fi
+          # Remove only the two obsolete desktop Firefox packages; retain old release and checksum files.
+          gh release delete-asset desktop-v153.6.0 Tiho-Windows-x64.zip --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release delete-asset desktop-v153.6.0 Tiho-Linux-x86_64.deb --yes --repo "$GITHUB_REPOSITORY" || true
