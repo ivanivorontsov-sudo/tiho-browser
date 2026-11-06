@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Тихо — новая вкладка</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark">т</span><span>тихо</span><small>приватный браузер</small></div>
+  <div class="status"><span class="shield">◆</span> Защита включена</div>
+</header>
+<main>
+  <section class="hero">
+    <div class="eyebrow">ВАШЕ ПРОСТРАНСТВО В ИНТЕРНЕТЕ</div>
+    <h1>Интернет. <span>Без лишнего шума.</span></h1>
+    <p>Поиск без суеты. Вкладки без хаоса. Приватность — не пункт мелким шрифтом.</p>
+    <form id="search" autocomplete="off">
+      <span class="search-icon">⌕</span>
+      <input id="query" name="q" type="search" placeholder="Найти что-нибудь…" autofocus>
+      <select id="engine" aria-label="Поисковая система">
+        <option value="ddg">DuckDuckGo</option><option value="brave">Brave</option>
+        <option value="startpage">Startpage</option><option value="yandex">Яндекс</option>
+        <option value="google">Google</option>
+      </select>
+      <button type="submit">Найти <span>→</span></button>
+    </form>
+  </section>
+  <section class="links">
+    <div class="section-head"><div><h2>Быстрый доступ</h2><p>Часто посещаемые сайты — под рукой</p></div><button id="add" class="add">＋ Добавить</button></div>
+    <div id="tiles" class="tiles"></div>
+  </section>
+  <section class="privacy">
+    <div class="privacy-icon">✦</div>
+    <div><strong>Приватность включена</strong><p>Защита от отслеживания, HTTPS-only и uBlock Origin работают на уровне браузера.</p></div>
+    <span class="dot"></span>
+  </section>
+</main>
+<footer><span>ТИХО · ВАШ БРАУЗЕР</span><span>Меньше слежки. Больше интернета.</span></footer>
+<dialog id="editor">
+  <form method="dialog" id="tile-form">
+    <h2>Новая плитка</h2>
+    <label>Название<input id="tile-title" maxlength="32" required placeholder="Например, Почта"></label>
+    <label>Адрес сайта<input id="tile-url" type="url" required placeholder="https://example.com"></label>
+    <div class="dialog-actions"><button value="cancel" class="quiet">Отмена</button><button id="save" value="default">Сохранить</button></div>
+  </form>
+</dialog>
+<script>
+const engines={ddg:q=>'https://duckduckgo.com/?q='+encodeURIComponent(q),brave:q=>'https://search.brave.com/search?q='+encodeURIComponent(q),startpage:q=>'https://www.startpage.com/do/search?q='+encodeURIComponent(q),yandex:q=>'https://yandex.ru/search/?text='+encodeURIComponent(q),google:q=>'https://www.google.com/search?q='+encodeURIComponent(q)};
+const defaults=[['DuckDuckGo','https://duckduckgo.com/','D'],['Wikipedia','https://ru.wikipedia.org/','W'],['YouTube','https://www.youtube.com/','▶'],['GitHub','https://github.com/','⌘']];
+const $=id=>document.getElementById(id);
+let tiles;try{tiles=JSON.parse(localStorage.getItem('tiho.tiles'))||defaults}catch{tiles=defaults}
+$('engine').value=localStorage.getItem('tiho.engine')||'ddg';
+$('engine').addEventListener('change',()=>localStorage.setItem('tiho.engine',$('engine').value));
+$('search').addEventListener('submit',e=>{e.preventDefault();const q=$('query').value.trim();if(q)location.href=engines[$('engine').value](q)});
+function render(){ $('tiles').replaceChildren();tiles.forEach(([name,url,letter],i)=>{const a=document.createElement('a');a.className='tile';a.href=url;const icon=document.createElement('span');icon.className='tile-icon';icon.textContent=letter||name[0].toUpperCase();const title=document.createElement('span');title.textContent=name;a.append(icon,title);const del=document.createElement('button');del.className='remove';del.textContent='×';del.title='Удалить';del.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();tiles.splice(i,1);persist()});a.append(del);$('tiles').append(a)})}
+function persist(){localStorage.setItem('tiho.tiles',JSON.stringify(tiles));render()}
+$('add').addEventListener('click',()=>{$('tile-form').reset();$('editor').showModal();$('tile-title').focus()});
+$('tile-form').addEventListener('submit',e=>{if(e.submitter?.id!=='save')return;e.preventDefault();let url=$('tile-url').value.trim();if(!/^https?:\/\//i.test(url))url='https://'+url;try{url=new URL(url).href}catch{return}tiles.push([$ ('tile-title').value.trim(),url,$('tile-title').value.trim().slice(0,1).toUpperCase()]);persist();$('editor').close()});
+render();
+</script>
+</body></html>
