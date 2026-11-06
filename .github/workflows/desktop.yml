@@ -98,6 +98,8 @@ jobs:
           CONTROL
           dpkg-deb --build --root-owner-group "$ROOT" "Tiho-Linux-x86_64.deb"
           dpkg-deb --info Tiho-Linux-x86_64.deb
+          sudo apt-get install -y ./Tiho-Linux-x86_64.deb
+          tiho --headless --version
           mkdir unpacked
           dpkg-deb --extract Tiho-Linux-x86_64.deb unpacked
           test -x unpacked/opt/tiho/firefox/firefox
@@ -117,3 +119,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload desktop-v153.6.0 Tiho-Linux-x86_64.deb SHA256SUMS-tiho-linux.txt --clobber --repo "$GITHUB_REPOSITORY"
+          gh release delete-asset desktop-v153.6.0 Tiho-Linux-x86_64.tar.gz --yes --repo "$GITHUB_REPOSITORY" || true
+          gh release edit desktop-v153.6.0 --notes "Тихо для Linux x86_64: установочный пакет Tiho-Linux-x86_64.deb для Debian 13, Ubuntu и совместимых систем. Установка: sudo apt install ./Tiho-Linux-x86_64.deb. Firefox ESR с политиками приватности Тихо. SHA-256 опубликован в SHA256SUMS-tiho-linux.txt. Windows x64: Tiho-Windows-x64.zip."
