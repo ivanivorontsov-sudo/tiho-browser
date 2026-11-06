@@ -186,10 +186,6 @@
       "privacy.sanitize.sanitizeOnShutdown": {
         "Value": true,
         "Status": "locked"
-      },
-      "toolkit.legacyUserProfileCustomizations.stylesheets": {
-        "Value": true,
-        "Status": "locked"
       }
     },
     "Homepage": {
