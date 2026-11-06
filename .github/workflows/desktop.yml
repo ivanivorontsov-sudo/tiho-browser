@@ -119,7 +119,7 @@ jobs:
           install -m 0644 LICENSE "$ROOT/usr/share/doc/tiho-browser/LICENSE"
           install -d "$ROOT/usr/share/lintian/overrides"
           install -m 0644 desktop/lintian-overrides "$ROOT/usr/share/lintian/overrides/tiho-browser"
-          printf 'tiho-browser (%s-1) unstable; urgency=medium\\n\\n  * Initial desktop package with isolated profiles and validated start page.\\n\\n -- Ivan Vorontsov <ivanivorontsov@gmail.com>  %s\\n' "$VERSION" "$(date -R -u)" > "$ROOT/usr/share/doc/tiho-browser/changelog.Debian"
+          printf 'tiho-browser (%s-1) unstable; urgency=medium\n\n  * Initial desktop package with isolated profiles and validated start page.\n\n -- Ivan Vorontsov <ivanivorontsov@gmail.com>  %s\n' "$VERSION" "$(date -R -u)" > "$ROOT/usr/share/doc/tiho-browser/changelog.Debian"
           gzip -n "$ROOT/usr/share/doc/tiho-browser/changelog.Debian"
           install -m 0755 desktop/launchers/tiho-bank "$ROOT/usr/bin/tiho-bank"
           install -m 0755 desktop/launchers/tiho-private "$ROOT/usr/bin/tiho-private"
