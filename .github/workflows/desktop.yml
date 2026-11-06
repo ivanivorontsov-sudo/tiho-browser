@@ -31,6 +31,8 @@ jobs:
         run: |
           Copy-Item desktop/distribution/policies.json package/firefox/distribution/policies.json -Force
           Copy-Item desktop/README.md package/README-TIHO.txt
+          New-Item -ItemType Directory -Force package/firefox/defaults/profile/chrome | Out-Null
+          Copy-Item desktop/defaults/profile/chrome/userChrome.css package/firefox/defaults/profile/chrome/userChrome.css -Force
           $hash = (Get-FileHash package/firefox/firefox.exe -Algorithm SHA256).Hash.ToLower()
           "firefox.exe  $hash" | Out-File package/SHA256SUMS.txt -Encoding ascii
           Compress-Archive -Path package/firefox,package/README-TIHO.txt,package/SHA256SUMS.txt -DestinationPath Tiho-Windows-x64.zip
@@ -64,9 +66,11 @@ jobs:
           if [ -z "$VERSION" ]; then VERSION="153.6.0"; fi
           PKG="tiho-browser_${VERSION}-1_amd64"
           ROOT="pkg/$PKG"
-          install -d "$ROOT/DEBIAN" "$ROOT/opt/tiho" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/doc/tiho-browser"
+          install -d "$ROOT/DEBIAN" "$ROOT/opt/tiho" "$ROOT/opt/tiho/ui" "$ROOT/opt/tiho/firefox/defaults/profile/chrome" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/doc/tiho-browser"
           cp -a staging/firefox "$ROOT/opt/tiho/firefox"
-          install -m 0644 desktop/distribution/policies.json "$ROOT/opt/tiho/firefox/distribution/policies.json"
+          install -m 0644 desktop/distribution/policies-linux.json "$ROOT/opt/tiho/firefox/distribution/policies.json"
+          cp -a desktop/ui/. "$ROOT/opt/tiho/ui/"
+          install -m 0644 desktop/defaults/profile/chrome/userChrome.css "$ROOT/opt/tiho/firefox/defaults/profile/chrome/userChrome.css"
           install -m 0644 desktop/README.md "$ROOT/usr/share/doc/tiho-browser/README"
           cat > "$ROOT/usr/bin/tiho" <<'LAUNCHER'
           #!/bin/sh
