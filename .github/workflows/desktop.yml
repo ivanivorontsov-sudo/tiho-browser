@@ -166,7 +166,7 @@ jobs:
           test -x /usr/bin/tiho-bank
           test -x /usr/bin/tiho-private
           SMOKE_DIR="$(mktemp -d)"
-          tiho --headless --version
+          XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho --headless --version
           XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho-bank --headless --version
           XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho-private --headless --version
           XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho --headless --window-size=1280,900 --screenshot "$SMOKE_DIR/tiho.png" "file:///opt/tiho/ui/index.html"
@@ -185,6 +185,7 @@ jobs:
           sha256sum Tiho-Linux-x86_64.deb > SHA256SUMS-tiho-linux.txt
           sudo apt-get remove -y tiho-browser
           test -d "$SMOKE_DIR/config/tiho/profile"
+          test -d "$SMOKE_DIR/config/tiho/bank-profile"
       - uses: actions/upload-artifact@v4
         with:
           name: Tiho-Linux-x86_64-DEB
