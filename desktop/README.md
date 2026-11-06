@@ -18,13 +18,20 @@
 - Кросс-сайтовый Referer обрезается до origin.
 - Cookies, история, кэш, активные сессии и данные форм очищаются при закрытии браузера; пароли и закладки не входят в этот список.
 
-## Скачать
+## Скачать Linux
 
-GitHub Actions собирает два архива:
-- `Tiho-Windows-x64.zip`
-- `Tiho-Linux-x86_64.tar.gz`
+Для Debian 13, Ubuntu и совместимых систем выпускается установочный пакет **`Tiho-Linux-x86_64.deb`** (архитектура amd64).
 
-Открой вкладку **Actions → Desktop Firefox ESR → последний успешный запуск → Artifacts**. Для Linux распакуй архив и запусти `./firefox`. Для Windows распакуй архив и запусти `firefox.exe`.
+Установка:
+```bash
+sudo apt install ./Tiho-Linux-x86_64.deb
+```
+
+После установки браузер появится в меню приложений под названием **Тихо**. Запуск из терминала: `tiho`.
+
+Пакет устанавливает Firefox ESR в `/opt/tiho/firefox`, системный запускатель и политики приватности Тихо. Архив TAR.GZ больше не используется как основной способ установки Linux-версии.
+
+Готовый DEB и файл SHA-256 публикуются в [GitHub Releases](https://github.com/ivanivorontsov-sudo/tiho-browser/releases/tag/desktop-v153.6.0).
 
 ## Важно
 
