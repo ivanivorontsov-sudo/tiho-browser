@@ -17,30 +17,62 @@ permissions:
   contents: write
 
 jobs:
+  ui-tests:
+    name: UI validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate policy JSON and JavaScript
+        run: |
+          python3 -m json.tool desktop/distribution/policies-linux.json >/dev/null
+          python3 -m json.tool desktop/distribution/policies.json >/dev/null
+          node --check desktop/ui/core.js
+          node --check desktop/ui/app.js
+      - name: Run start-page unit tests
+        run: node --test desktop/ui/core.test.cjs
+
   windows:
     name: Windows x64 portable
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test start-page logic
+        run: node --test desktop/ui/core.test.cjs
       - name: Download Firefox ESR
         shell: pwsh
         run: |
           Invoke-WebRequest "https://download.mozilla.org/?product=firefox-esr-latest&os=win64&lang=en-US" -OutFile firefox-setup.exe
           7z x firefox-setup.exe -ostaging -y
           $browser = Get-ChildItem staging -Filter firefox.exe -Recurse | Select-Object -First 1
-          if (-not $browser) { throw "Firefox executable not found in Mozilla ZIP" }
+          if (-not $browser) { throw "Firefox executable not found in Mozilla package" }
           New-Item -ItemType Directory -Force package/firefox/distribution | Out-Null
+          New-Item -ItemType Directory -Force package/ui | Out-Null
           Copy-Item "$($browser.Directory.FullName)/*" package/firefox -Recurse -Force
-      - name: Apply Tiho policies
+      - name: Assemble portable Tiho package
         shell: pwsh
         run: |
           Copy-Item desktop/distribution/policies.json package/firefox/distribution/policies.json -Force
+          Copy-Item desktop/ui/* package/ui/ -Recurse -Force
           Copy-Item desktop/README.md package/README-TIHO.txt
-          New-Item -ItemType Directory -Force package/firefox/defaults/profile/chrome | Out-Null
-          Copy-Item desktop/defaults/profile/chrome/userChrome.css package/firefox/defaults/profile/chrome/userChrome.css -Force
+          @'
+          @echo off
+          setlocal
+          set "TIHO_PROFILE=%APPDATA%\Tiho\profile"
+          if not exist "%TIHO_PROFILE%" mkdir "%TIHO_PROFILE%"
+          if not exist "%TIHO_PROFILE%\user.js" (
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "$root=(Resolve-Path '%~dp0').Path; $ui=[Uri]::new((Join-Path $root 'ui\index.html')).AbsoluteUri; $line='user_pref("browser.startup.homepage", '+(ConvertTo-Json -Compress $ui)+');'; Set-Content -LiteralPath (Join-Path '%TIHO_PROFILE%' 'user.js') -Value $line -Encoding ascii"
+          )
+          start "" "%~dp0firefox\firefox.exe" -profile "%TIHO_PROFILE%" %*
+          '@ | Set-Content package/Tiho.cmd -Encoding ascii
           $hash = (Get-FileHash package/firefox/firefox.exe -Algorithm SHA256).Hash.ToLower()
           "firefox.exe  $hash" | Out-File package/SHA256SUMS.txt -Encoding ascii
-          Compress-Archive -Path package/firefox,package/README-TIHO.txt,package/SHA256SUMS.txt -DestinationPath Tiho-Windows-x64.zip
+          Compress-Archive -Path package/firefox,package/ui,package/Tiho.cmd,package/README-TIHO.txt,package/SHA256SUMS.txt -DestinationPath Tiho-Windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: Tiho-Windows-x64
@@ -52,11 +84,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install package tools
-        run: sudo apt-get update && sudo apt-get install -y dpkg-dev
+      - name: Install package and validation tools
+        run: sudo apt-get update && sudo apt-get install -y dpkg-dev lintian desktop-file-utils shellcheck nodejs
+      - name: Validate sources
+        run: |
+          python3 -m json.tool desktop/distribution/policies-linux.json >/dev/null
+          node --check desktop/ui/core.js
+          node --check desktop/ui/app.js
+          node --test desktop/ui/core.test.cjs
       - name: Download official Firefox ESR
         run: |
-          curl -fL --retry 3 "https://download.mozilla.org/?product=firefox-esr-latest&os=linux64&lang=en-US" -o firefox.tar.xz
+          curl -fL --retry 4 --retry-all-errors --connect-timeout 20 --max-time 300 "https://download.mozilla.org/?product=firefox-esr-latest&os=linux64&lang=en-US" -o firefox.tar.xz
           mkdir staging
           tar -xJf firefox.tar.xz -C staging
           test -x staging/firefox/firefox
@@ -65,32 +103,38 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(sed -n 's/^Version: *//p' staging/firefox/application.ini | head -1)"
-          if [ -z "$VERSION" ]; then
-            VERSION="$(grep -m1 '^Version=' staging/firefox/application.ini | cut -d= -f2)"
-          fi
-          if [ -z "$VERSION" ]; then VERSION="153.6.0"; fi
+          if [ -z "$VERSION" ]; then VERSION="$(grep -m1 '^Version=' staging/firefox/application.ini | cut -d= -f2 || true)"; fi
+          if [ -z "$VERSION" ]; then echo "Could not determine Firefox ESR version" >&2; exit 1; fi
           PKG="tiho-browser_${VERSION}-1_amd64"
           ROOT="pkg/$PKG"
-          install -d "$ROOT/DEBIAN" "$ROOT/opt/tiho" "$ROOT/opt/tiho/ui" "$ROOT/opt/tiho/firefox/defaults/profile/chrome" "$ROOT/opt/tiho/firefox/distribution" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/doc/tiho-browser"
+          install -d "$ROOT/DEBIAN" "$ROOT/opt/tiho/ui" "$ROOT/opt/tiho/firefox/distribution" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/icons/hicolor/scalable/apps" "$ROOT/usr/share/doc/tiho-browser"
           cp -a staging/firefox/. "$ROOT/opt/tiho/firefox/"
           install -m 0644 desktop/distribution/policies-linux.json "$ROOT/opt/tiho/firefox/distribution/policies.json"
           cp -a desktop/ui/. "$ROOT/opt/tiho/ui/"
-          install -m 0644 desktop/defaults/profile/chrome/userChrome.css "$ROOT/opt/tiho/firefox/defaults/profile/chrome/userChrome.css"
+          install -m 0644 desktop/tiho-browser.svg "$ROOT/usr/share/icons/hicolor/scalable/apps/tiho-browser.svg"
           install -m 0644 desktop/README.md "$ROOT/usr/share/doc/tiho-browser/README"
           cat > "$ROOT/usr/bin/tiho" <<'LAUNCHER'
           #!/bin/sh
-          exec /opt/tiho/firefox/firefox "$@"
+          set -eu
+          : "${HOME:?HOME must be set to launch Tiho}"
+          CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+          PROFILE="$CONFIG_HOME/tiho/profile"
+          mkdir -p "$PROFILE"
+          exec /opt/tiho/firefox/firefox -profile "$PROFILE" "$@"
           LAUNCHER
           chmod 0755 "$ROOT/usr/bin/tiho"
           cat > "$ROOT/usr/share/applications/tiho-browser.desktop" <<'DESKTOP'
           [Desktop Entry]
+          Version=1.0
           Name=Тихо
           GenericName=Приватный веб-браузер
-          Comment=Firefox ESR с настройками приватности Тихо
-          Exec=/usr/bin/tiho %u
+          Comment=Firefox ESR с интерфейсом и настройками Тихо
+          Exec=/usr/bin/tiho %U
+          Icon=tiho-browser
           Terminal=false
           Type=Application
           Categories=Network;WebBrowser;
+          MimeType=text/html;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;
           StartupNotify=true
           DESKTOP
           cat > "$ROOT/DEBIAN/control" <<CONTROL
@@ -102,20 +146,30 @@ jobs:
           Maintainer: Ivan Vorontsov
           Depends: libc6 (>= 2.17), libgtk-3-0 | libgtk-3-0t64, libdbus-glib-1-2, libasound2 | libasound2t64, libnss3, libx11-6, libx11-xcb1, libxcb1, libxcomposite1, libxdamage1, libxext6, libxfixes3, libxrandr2, libxtst6, libxrender1, libfontconfig1, libfreetype6, libglib2.0-0, libstdc++6
           Description: Тихо — приватный браузер для Linux
-           Firefox ESR with Tiho privacy policies, strict tracking protection,
-           HTTPS-only mode and uBlock Origin policy.
+           Firefox ESR with Tiho start page and privacy policies.
           CONTROL
-          dpkg-deb --build --root-owner-group "$ROOT" "Tiho-Linux-x86_64.deb"
+          dpkg-deb --build --root-owner-group "$ROOT" Tiho-Linux-x86_64.deb
           dpkg-deb --info Tiho-Linux-x86_64.deb
+          desktop-file-validate "$ROOT/usr/share/applications/tiho-browser.desktop"
+          shellcheck "$ROOT/usr/bin/tiho"
+          lintian --fail-on error Tiho-Linux-x86_64.deb
           sudo apt-get install -y ./Tiho-Linux-x86_64.deb
+          test -x /usr/bin/tiho
           tiho --headless --version
-          mkdir unpacked
+          SMOKE_DIR="$(mktemp -d)"
+          XDG_CONFIG_HOME="$SMOKE_DIR/config" tiho --headless --window-size=1280,900 --screenshot "$SMOKE_DIR/tiho.png" "file:///opt/tiho/ui/index.html"
+          test -s "$SMOKE_DIR/tiho.png"
+          test "$(stat -c %s "$SMOKE_DIR/tiho.png")" -gt 1000
+          test -f "$SMOKE_DIR/config/tiho/profile/prefs.js" || test -d "$SMOKE_DIR/config/tiho/profile"
+          mkdir -p unpacked
           dpkg-deb --extract Tiho-Linux-x86_64.deb unpacked
           test -x unpacked/opt/tiho/firefox/firefox
           test -x unpacked/usr/bin/tiho
           test -f unpacked/opt/tiho/firefox/distribution/policies.json
-          unpacked/opt/tiho/firefox/firefox --headless --version
+          test -f unpacked/opt/tiho/ui/index.html
           sha256sum Tiho-Linux-x86_64.deb > SHA256SUMS-tiho-linux.txt
+          sudo apt-get remove -y tiho-browser
+          test -d "$SMOKE_DIR/config/tiho/profile"
       - uses: actions/upload-artifact@v4
         with:
           name: Tiho-Linux-x86_64-DEB
@@ -129,5 +183,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload desktop-v153.6.0 Tiho-Linux-x86_64.deb SHA256SUMS-tiho-linux.txt --clobber --repo "$GITHUB_REPOSITORY"
-          gh release delete-asset desktop-v153.6.0 Tiho-Linux-x86_64.tar.gz --yes --repo "$GITHUB_REPOSITORY" || true
-          gh release edit desktop-v153.6.0 --notes "Тихо для Linux x86_64: установочный пакет Tiho-Linux-x86_64.deb для Debian 13, Ubuntu и совместимых систем. Установка: sudo apt install ./Tiho-Linux-x86_64.deb. Firefox ESR с политиками приватности Тихо. SHA-256 опубликован в SHA256SUMS-tiho-linux.txt. Windows x64: Tiho-Windows-x64.zip."
+          gh release edit desktop-v153.6.0 --notes "Тихо для Linux x86_64: Tiho-Linux-x86_64.deb для Debian 13, Ubuntu и совместимых систем. Установка: sudo apt install ./Tiho-Linux-x86_64.deb. SHA-256 опубликован в SHA256SUMS-tiho-linux.txt."
