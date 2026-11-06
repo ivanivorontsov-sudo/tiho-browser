@@ -71,7 +71,7 @@ jobs:
           if [ -z "$VERSION" ]; then VERSION="153.6.0"; fi
           PKG="tiho-browser_${VERSION}-1_amd64"
           ROOT="pkg/$PKG"
-          install -d "$ROOT/DEBIAN" "$ROOT/opt/tiho" "$ROOT/opt/tiho/ui" "$ROOT/opt/tiho/firefox/defaults/profile/chrome" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/doc/tiho-browser"
+          install -d "$ROOT/DEBIAN" "$ROOT/opt/tiho" "$ROOT/opt/tiho/ui" "$ROOT/opt/tiho/firefox/defaults/profile/chrome" "$ROOT/opt/tiho/firefox/distribution" "$ROOT/usr/bin" "$ROOT/usr/share/applications" "$ROOT/usr/share/doc/tiho-browser"
           cp -a staging/firefox "$ROOT/opt/tiho/firefox"
           install -m 0644 desktop/distribution/policies-linux.json "$ROOT/opt/tiho/firefox/distribution/policies.json"
           cp -a desktop/ui/. "$ROOT/opt/tiho/ui/"
