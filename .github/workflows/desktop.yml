@@ -115,6 +115,8 @@ jobs:
           cp -a desktop/ui/. "$ROOT/opt/tiho/ui/"
           install -m 0644 desktop/tiho-browser.svg "$ROOT/usr/share/icons/hicolor/scalable/apps/tiho-browser.svg"
           install -m 0644 desktop/README.md "$ROOT/usr/share/doc/tiho-browser/README"
+          install -m 0644 desktop/copyright "$ROOT/usr/share/doc/tiho-browser/copyright"
+          install -m 0644 LICENSE "$ROOT/usr/share/doc/tiho-browser/LICENSE"
           install -m 0755 desktop/launchers/tiho-bank "$ROOT/usr/bin/tiho-bank"
           install -m 0755 desktop/launchers/tiho-private "$ROOT/usr/bin/tiho-private"
           install -m 0644 desktop/launchers/tiho-bank.desktop "$ROOT/usr/share/applications/tiho-bank.desktop"
