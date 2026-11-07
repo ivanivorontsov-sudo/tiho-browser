@@ -1,0 +1,6 @@
+# The official Mozilla Firefox ESR binary distribution is bundled under /opt/tiho.
+# Its libraries and executable modes are supplied by upstream and are not repackaged.
+tiho-browser binary: dir-or-file-in-opt
+tiho-browser binary: embedded-library
+tiho-browser binary: relative-library-search-path
+tiho-browser binary: shared-library-is-executable

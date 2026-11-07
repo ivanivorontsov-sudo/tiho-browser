@@ -1,0 +1,16 @@
+/* Тихо desktop chrome — mobile-inspired red tab strip and compact navigation. */
+#TabsToolbar{background:#e53935!important;padding:4px 7px 2px!important;min-height:42px!important}
+.tabbrowser-tab{padding:2px 3px!important;min-height:34px!important}
+.tabbrowser-tab .tab-background{border-radius:10px 10px 7px 7px!important;background:#ff7773!important;border:0!important}
+.tabbrowser-tab[selected] .tab-background{background:#fff!important}
+.tabbrowser-tab .tab-label{font-weight:600!important}
+.tabbrowser-tab[selected] .tab-label{color:#202124!important}
+#TabsToolbar .toolbarbutton-1{color:white!important}
+#nav-bar{background:#191a1e!important;border:0!important;box-shadow:none!important;padding:7px 10px!important}
+#urlbar-background,.searchbar-textbox{background:#292b31!important;border:1px solid #41434a!important;border-radius:12px!important;box-shadow:none!important}
+#urlbar[focused] #urlbar-background{border-color:#e85a55!important;outline:0!important}
+#urlbar-input,.urlbar-input{color:#f5f5f5!important}
+#PersonalToolbar{background:#191a1e!important;border:0!important}
+#navigator-toolbox{border-bottom:1px solid #303137!important}
+#sidebar-box{background:#191a1e!important}
+#statuspanel-label{background:#292b31!important;color:#fff!important;border:1px solid #41434a!important}

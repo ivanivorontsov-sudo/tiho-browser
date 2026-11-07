@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=Тихо — Приватное окно
+GenericName=Приватный просмотр
+Comment=Открыть приватное окно Firefox
+Exec=/usr/bin/tiho-private %U
+Icon=tiho-browser
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+StartupNotify=true

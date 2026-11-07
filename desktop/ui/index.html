@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#111214">
+<title>Тихо — новая вкладка</title>
+<link rel="stylesheet" href="style.css">
+<script src="core.js" defer></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="mark">т</span><span>тихо</span><small>приватный браузер</small></div>
+  <div class="status"><span class="shield">◆</span> Профиль приватности Тихо</div>
+</header>
+<main>
+  <section class="hero">
+    <div class="eyebrow">ВАШЕ ПРОСТРАНСТВО В ИНТЕРНЕТЕ</div>
+    <h1>Интернет. <span>Без лишнего шума.</span></h1>
+    <p>Поиск без суеты. Вкладки без хаоса. Приватность — не пункт мелким шрифтом.</p>
+    <form id="search" autocomplete="off">
+      <span class="search-icon" aria-hidden="true">⌕</span>
+      <input id="query" name="q" type="search" placeholder="Найти что-нибудь…" aria-label="Поисковый запрос" autofocus>
+      <select id="engine" aria-label="Поисковая система">
+        <option value="ddg">DuckDuckGo</option><option value="brave">Brave</option>
+        <option value="startpage">Startpage</option><option value="yandex">Яндекс</option>
+        <option value="google">Google</option>
+      </select>
+      <button type="submit">Найти <span aria-hidden="true">→</span></button>
+    </form>
+    <p id="notice" class="notice" role="status" aria-live="polite"></p>
+  </section>
+  <section class="links">
+    <div class="section-head"><div><h2>Быстрый доступ</h2><p>Часто посещаемые сайты — под рукой</p></div><button id="add" class="add" type="button">＋ Добавить</button></div>
+    <div id="tiles" class="tiles"></div>
+  </section>
+  <section class="tools">
+    <div class="section-head"><div><h2>Инструменты браузера</h2><p>Основные функции Firefox — в одном месте</p></div></div>
+    <div class="tool-grid">
+      <a class="tool" href="about:downloads"><span class="tool-symbol">↓</span><span><strong>Загрузки</strong><small>Файлы и история загрузок</small></span></a>
+      <a class="tool" href="about:history"><span class="tool-symbol">◷</span><span><strong>История</strong><small>Посещённые страницы</small></span></a>
+      <a class="tool" href="about:addons"><span class="tool-symbol">＋</span><span><strong>Дополнения</strong><small>Расширения и темы</small></span></a>
+      <a class="tool" href="about:preferences#privacy"><span class="tool-symbol">◇</span><span><strong>Приватность</strong><small>Настройки защиты Firefox</small></span></a>
+      <a class="tool" href="about:logins"><span class="tool-symbol">▣</span><span><strong>Пароли</strong><small>Сохранённые учётные записи</small></span></a>
+      <div class="tool tool-hint"><span class="tool-symbol">▤</span><span><strong>Закладки и вкладки</strong><small>Ctrl+Shift+O — закладки · Ctrl+T — новая вкладка</small></span></div>
+    </div>
+  </section>
+  <section class="privacy">
+    <div class="privacy-icon" aria-hidden="true">✦</div>
+    <div><strong>Настройки приватности Тихо</strong><p>Защита Firefox и uBlock Origin управляются настройками браузера. Эта страница не выполняет самостоятельную проверку защиты.</p></div>
+  </section>
+</main>
+<footer><span>ТИХО · ВАШ БРАУЗЕР</span><span>Меньше слежки. Больше интернета.</span></footer>
+<dialog id="editor" aria-labelledby="editor-title">
+  <form method="dialog" id="tile-form">
+    <h2 id="editor-title">Новая плитка</h2>
+    <label>Название<input id="tile-title" maxlength="32" required placeholder="Например, Почта"></label>
+    <label>Адрес сайта<input id="tile-url" type="text" required inputmode="url" placeholder="https://example.com"></label>
+    <div class="dialog-actions"><button type="button" id="cancel" class="quiet">Отмена</button><button type="submit" id="save">Сохранить</button></div>
+  </form>
+</dialog>
+</body></html>

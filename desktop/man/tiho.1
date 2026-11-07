@@ -1,0 +1,18 @@
+.TH TIHO 1 "November 2026" "Tiho Desktop" "User Commands"
+.SH NAME
+tiho \- launch the Tiho desktop browser
+.SH SYNOPSIS
+.B tiho
+.RI [ Firefox options ] " " [ URL ... ]
+.SH DESCRIPTION
+Launches the bundled Firefox ESR with the Tiho desktop start page and the user's dedicated Tiho profile.
+.SH PROFILES
+The default profile is stored in
+.I $XDG_CONFIG_HOME/tiho/profile
+or
+.I ~/.config/tiho/profile
+when XDG_CONFIG_HOME is unset.
+.SH SEE ALSO
+.BR tiho-bank (1),
+.BR tiho-private (1),
+.BR firefox (1)

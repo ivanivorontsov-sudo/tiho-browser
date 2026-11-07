@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Name=Тихо — Банк
+GenericName=Изолированный банковский профиль
+Comment=Отдельный профиль Firefox с независимыми cookie и хранилищем
+Exec=/usr/bin/tiho-bank %U
+Icon=tiho-browser
+Terminal=false
+Type=Application
+Categories=Network;Finance;
+StartupNotify=true

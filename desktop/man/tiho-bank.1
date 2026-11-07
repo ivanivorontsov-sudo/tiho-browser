@@ -1,0 +1,18 @@
+.TH TIHO-BANK 1 "November 2026" "Tiho Desktop" "User Commands"
+.SH NAME
+tiho-bank \- launch Tiho with an isolated bank profile
+.SH SYNOPSIS
+.B tiho-bank
+.RI [ Firefox options ] " " [ URL ... ]
+.SH DESCRIPTION
+Launches Firefox ESR using a separate profile directory. Cookies, sessions and site storage are isolated from the normal Tiho profile.
+This is not equivalent to the Android Bank mode: it does not automatically detect payment domains or block screen capture and overlays.
+.SH PROFILES
+The profile is stored in
+.I $XDG_CONFIG_HOME/tiho/bank-profile
+or
+.I ~/.config/tiho/bank-profile
+when XDG_CONFIG_HOME is unset.
+.SH SEE ALSO
+.BR tiho (1),
+.BR tiho-private (1)

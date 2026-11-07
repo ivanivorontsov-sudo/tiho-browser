@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+: "${HOME:?HOME must be set to launch Tiho Bank mode}"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+PROFILE="$CONFIG_HOME/tiho/bank-profile"
+mkdir -p "$PROFILE"
+exec /opt/tiho/firefox/firefox -no-remote -profile "$PROFILE" "$@"
