@@ -1,0 +1,31 @@
+# First-party content CDNs. Host-level copies of AdGuard Mobile Ads lose $third-party/$path,
+# so these names must never be blocked or search/images/UI break (grey placeholders).
+# Subdomains of a listed name are also allowed. Lines "#re …" are full-host regexes.
+# Do not list ad/tracker hosts (an.yandex.ru, banners.mobile.yandex.net, ad.mail.ru, csi.gstatic.com…).
+
+# Yandex search UI and image thumbnails (*.mds.yandex.net covers avatars.mds.yandex.net).
+# Not the yandex.ru apex — that would allow an.yandex.ru / mc.yandex.ru.
+yastatic.net
+mds.yandex.net
+favicon.yandex.net
+#re ^im\d+-tub-[a-z]{2}\.yandex\.net$
+
+# VK photos / video CDN
+userapi.com
+vkuservideo.net
+vkuser.net
+vk-cdn.net
+
+# Mail.ru image hosts (not the apex mail.ru, and not ad.mail.ru / an.mail.ru)
+img.mail.ru
+filin.mail.ru
+
+# Google Images / static / YouTube thumbs (not ads*.googleusercontent.com, not csi.gstatic.com)
+#re ^lh\d+\.googleusercontent\.com$
+#re ^encrypted-tbn\d+\.gstatic\.com$
+fonts.gstatic.com
+www.gstatic.com
+ssl.gstatic.com
+maps.gstatic.com
+ytimg.com
+ggpht.com

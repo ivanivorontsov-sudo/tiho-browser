@@ -7,7 +7,14 @@
 
 Настольные сборки: GitHub Actions → **Desktop Firefox ESR** → Artifacts.
 
+## 2.4.1: картинки Яндекса и другие контентные CDN
+
+* ТихоЩит больше не режет first-party CDN картинок и статики: `*.mds.yandex.net` (включая `avatars.mds.yandex.net`), `yastatic.net`, `imN-tub-*.yandex.net`, а также VK `userapi.com`, часть картинок Mail.ru, Google Images (`lh*.googleusercontent.com`, `encrypted-tbn*.gstatic.com`), `gstatic` (шрифты/www) и превью YouTube (`ytimg`, `ggpht`).
+* Причина серых заглушек в блоке «Картинки» на `yandex.ru/search/touch`: список AdGuard Mobile Ads содержит эти хосты как домены рекламы, но в браузере хостовый фильтр теряет `$third-party` и путь — и отменяет загрузку превью.
+* Матчер не применяет слишком широкие правила вроде голого `mail.ru` или `yandex.com.tr` ко всем поддоменам; рекламные хосты (`an.yandex.ru`, `banners.mobile.yandex.net`, `ad.mail.ru`, `csi.gstatic.com`) по-прежнему блокируются.
+
 ## 2.4.0: ТихоЩит внутри браузера и другие магазины расширений
+
 
 * В браузер встроены доменные списки отдельного приложения **ТихоЩит** (Google Ads/AdMob/IMA, мобильные SDK Unity/AppLovin/ironSource и др., AdGuard Mobile Ads, HaGeZi Pro mini, опционально аналитика). Запросы к этим хостам перехватывает встроенное WebExtension через Gecko `webRequest` — аналог `shouldInterceptRequest`, без VPN и без прокси.
 * В настройках: тумблер ТихоЩит, включение отдельных списков и счётчик блокировок.

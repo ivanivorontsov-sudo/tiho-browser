@@ -14,6 +14,8 @@ class DomainMatcher {
 
     fun add(domain: String, list: String) {
         val d = normalize(domain) ?: return
+        if (ShieldAllowlist.isTooBroadApex(d)) return
+        if (ShieldAllowlist.isAllowed(d)) return
         blocked.putIfAbsent(d, list)
     }
 
@@ -24,17 +26,17 @@ class DomainMatcher {
     fun size(): Int = blocked.size
 
     fun match(host: String): Hit? {
-        var cur = normalize(host) ?: return null
+        val start = normalize(host) ?: return null
+        if (ShieldAllowlist.isAllowed(start)) return null
+        var cur = start
         while (true) {
             val list = blocked[cur]
             if (list != null) return Hit(cur, list)
             val dot = cur.indexOf('.')
             if (dot < 0 || dot == cur.length - 1) break
             cur = cur.substring(dot + 1)
-            if (cur.indexOf('.') < 0) {
-                val tld = blocked[cur]
-                return if (tld != null) Hit(cur, tld) else null
-            }
+            // Do not treat a public suffix / TLD ("net", "ru") as a block rule.
+            if (cur.indexOf('.') < 0) break
         }
         return null
     }
