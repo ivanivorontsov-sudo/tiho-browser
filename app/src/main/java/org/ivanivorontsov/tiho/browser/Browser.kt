@@ -15,10 +15,14 @@ import android.widget.Toast
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import org.ivanivorontsov.tiho.TihoApp
+import org.ivanivorontsov.tiho.ext.StoreCatalog
 import org.ivanivorontsov.tiho.ext.UserScript
+import org.ivanivorontsov.tiho.ext.UserStyle
+import org.ivanivorontsov.tiho.ext.WebExtPackage
 import org.ivanivorontsov.tiho.ext.UserScriptPin
 import org.ivanivorontsov.tiho.privacy.UrlCleaner
 import org.ivanivorontsov.tiho.security.Homograph
+import org.ivanivorontsov.tiho.security.Net
 import org.ivanivorontsov.tiho.security.SchemePolicy
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoView
@@ -27,7 +31,7 @@ import java.util.concurrent.Executors
 
 /** Tabs, navigation policy and UI state. Lives as long as the activity. */
 class Browser(val app: TihoApp) {
-    enum class Screen { BROWSER, TABS, SETTINGS, ADDONS, AMO, USERSCRIPTS, BOOKMARKS, DOWNLOADS, HISTORY, UPDATES, SECURITY, ABOUT, LICENSES }
+    enum class Screen { BROWSER, TABS, SETTINGS, ADDONS, AMO, USERSCRIPTS, USERSTYLES, STORES, SHIELD, BOOKMARKS, DOWNLOADS, HISTORY, UPDATES, SECURITY, ABOUT, LICENSES }
 
     val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
@@ -207,7 +211,7 @@ class Browser(val app: TihoApp) {
     /** Back: closes overlays first, then history, then the tab (if opened as a popup). */
     fun back(): Boolean {
         if (popup.value != null) { closePopup(); return true }
-        if (screen.value != Screen.BROWSER) { screen.value = when (screen.value) { Screen.AMO -> Screen.ADDONS; Screen.LICENSES -> Screen.ABOUT; else -> Screen.BROWSER }; return true }
+        if (screen.value != Screen.BROWSER) { screen.value = when (screen.value) { Screen.AMO, Screen.USERSTYLES, Screen.STORES -> Screen.ADDONS; Screen.SHIELD -> Screen.SETTINGS; Screen.LICENSES -> Screen.ABOUT; else -> Screen.BROWSER }; return true }
         if (fullscreen.value) { current.value?.session?.exitFullScreen(); return true }
         val t = current.value ?: return false
         if (t.warning.value != null) { t.warning.value = null; return true }
@@ -276,6 +280,92 @@ class Browser(val app: TihoApp) {
         }
         show(UiDialog.Message("Установить пользовательский скрипт?", text, "Установить", "Отмена") { ok ->
             if (ok) { app.extensions.install(s); app.addons.pushConfig(); toast("Скрипт установлен") }
+        })
+    }
+
+    fun offerUserstyle(url: String) {
+        if (!url.startsWith("https://")) { snack("Стили устанавливаются только по HTTPS"); return }
+        snack("Загрузка стиля…")
+        io.execute {
+            try {
+                val s = app.extensions.downloadStyle(url)
+                main.post { confirmUserstyle(s) }
+            } catch (e: Exception) { snack("Стиль не установлен: ${e.message}") }
+        }
+    }
+
+    fun confirmUserstyle(s: UserStyle) {
+        val text = buildString {
+            append("${s.name} ${s.version}\n${s.description}\n\nИсточник: ${s.sourceUrl}\nSHA-256: ${org.ivanivorontsov.tiho.ext.UserScriptPin.pretty(s.sha256)}")
+            append("\n\nСтиль не применяется на страницах оплаты, пока вы явно не доверите эту версию.")
+        }
+        show(UiDialog.Message("Установить стиль?", text, "Установить", "Отмена") { ok ->
+            if (ok) { app.extensions.installStyle(s); app.addons.pushConfig(); toast("Стиль установлен") }
+        })
+    }
+
+    fun offerWebExt(url: String) {
+        if (!url.startsWith("https://")) { snack("Пакеты расширений загружаются только по HTTPS"); return }
+        snack("Загрузка пакета…")
+        io.execute {
+            try {
+                val ua = if ("clients2.google.com" in url || "edge.microsoft.com" in url)
+                    "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.6778.0 Mobile Safari/537.36"
+                else "Mozilla/5.0"
+                val (preview, _) = app.extensions.downloadPackage(url, ua)
+                main.post { confirmWebExt(preview, url) }
+            } catch (e: Exception) { snack("Пакет не установлен: ${e.message}") }
+        }
+    }
+
+    fun offerChromeStore(ref: StoreCatalog.StoreRef) {
+        offerWebExt(StoreCatalog.crxUrl(ref))
+    }
+
+    /** Greasy Fork + userstyles.world search (background thread). */
+    fun ioSearch(query: String, done: (List<StoreCatalog.ScriptHit>, List<StoreCatalog.StyleHit>, String?) -> Unit) {
+        io.execute {
+            var scripts = emptyList<StoreCatalog.ScriptHit>()
+            var styles = emptyList<StoreCatalog.StyleHit>()
+            val errors = ArrayList<String>()
+            try { scripts = StoreCatalog.parseGreasyFork(Net.getText(StoreCatalog.greasyForkSearchUrl(query), 2L * 1024 * 1024)) }
+            catch (e: Exception) { errors += "Greasy Fork: ${e.message}" }
+            try { styles = StoreCatalog.parseUserstylesWorld(Net.getText(StoreCatalog.userstylesSearchUrl(query), 2L * 1024 * 1024)) }
+            catch (e: Exception) { errors += "userstyles.world: ${e.message}" }
+            val err = when {
+                scripts.isEmpty() && styles.isEmpty() && errors.isNotEmpty() -> errors.joinToString("; ")
+                scripts.isEmpty() && styles.isEmpty() -> "Ничего не найдено"
+                else -> null
+            }
+            main.post { done(scripts, styles, err) }
+        }
+    }
+
+    fun confirmWebExt(p: WebExtPackage.Preview, sourceUrl: String?) {
+        if (!p.canInstall) {
+            show(UiDialog.Message("Это расширение нельзя установить таким способом",
+                "«${p.name}» ${p.version} не содержит content_scripts / CSS. " +
+                    "Полные расширения Chrome с фоновым скриптом на Android работают только если есть подписанный XPI на addons.mozilla.org.\n\n" +
+                    (if (p.unsupported.isEmpty()) "" else "Заявлено, но недоступно: " + p.unsupported.joinToString()) +
+                    "\n\nПопробуйте найти аналог в каталоге AMO или как пользовательский скрипт на Greasy Fork.",
+                "Понятно", null) { })
+            return
+        }
+        val text = buildString {
+            append("${p.name} ${p.version}\n${p.description}\n\n")
+            append("Будут установлены как подмножество WebExtension: ${p.scripts.size} скрипт(ов) содержимого и ${p.styles.size} стил(ей). ")
+            append("Фон, всплывающие окна, DNR и замена служебных страниц не поддерживаются")
+            if (p.unsupported.isNotEmpty()) append(" (${p.unsupported.joinToString()})")
+            append(".\n\nИсточник: $sourceUrl")
+        }
+        show(UiDialog.Message("Установить «${p.name}»?", text, "Установить", "Отмена") { ok ->
+            if (!ok) return@Message
+            try {
+                WebExtPackage.toUserScripts(p, sourceUrl).forEach { app.extensions.install(it) }
+                WebExtPackage.toUserStyles(p, sourceUrl).forEach { app.extensions.installStyle(it) }
+                app.addons.pushConfig()
+                toast("Установлено: ${p.name}")
+            } catch (e: Exception) { toast("Не удалось сохранить: ${e.message}") }
         })
     }
 

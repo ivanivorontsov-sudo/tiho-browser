@@ -16,6 +16,8 @@ object NavPolicy {
         data class External(val url: String) : Decision()
         data class InstallXpi(val slugOrUrl: String) : Decision()
         data class OfferUserscript(val url: String) : Decision()
+        data class OfferUserstyle(val url: String) : Decision()
+        data class OfferWebExt(val url: String) : Decision()
         data class Phishing(val url: String, val host: String, val rule: String) : Decision()
         /** Known redirect wrapper (vk.com/away.php, google.com/url, …): load the real destination directly. */
         data class Unwrap(val url: String) : Decision()
@@ -57,7 +59,11 @@ object NavPolicy {
         if (scheme != "http" && scheme != "https") return Decision.Allow   // data:, blob: inside pages
         if (r.topLevel && AddonPolicy.isXpiUrl(u))
             return Decision.InstallXpi(AddonPolicy.slugFromListing(r.triggerUri) ?: AddonPolicy.slugFromListing(r.currentUrl) ?: u.substringAfterLast('/'))
-        if (r.topLevel && u.substringBefore('?').substringBefore('#').endsWith(".user.js")) return Decision.OfferUserscript(u)
+        val path = u.substringBefore('?').substringBefore('#')
+        if (r.topLevel && path.endsWith(".user.js", ignoreCase = true)) return Decision.OfferUserscript(u)
+        if (r.topLevel && path.endsWith(".user.css", ignoreCase = true)) return Decision.OfferUserstyle(u)
+        if (r.topLevel && (path.endsWith(".crx", ignoreCase = true) || (path.endsWith(".xpi", ignoreCase = true) && !AddonPolicy.isXpiUrl(u))))
+            return Decision.OfferWebExt(u)
         val host = hostOf(u) ?: return Decision.Allow
         if (host !in bypass) threat(u)?.let { return Decision.Phishing(u, host, it) }
         if (r.topLevel && r.sameWindow && !r.safePayment) {

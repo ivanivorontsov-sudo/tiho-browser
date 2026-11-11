@@ -64,7 +64,9 @@ class NavPolicyTest {
     @Test fun addonsAndUserscripts() {
         assertTrue(d("https://addons.mozilla.org/firefox/downloads/file/123/darkreader-4.9.xpi") is Decision.InstallXpi)
         assertEquals(Decision.OfferUserscript("https://greasyfork.org/scripts/1/code/x.user.js"), d("https://greasyfork.org/scripts/1/code/x.user.js"))
-        assertTrue(d("https://evil.example/fake.xpi") is Decision.Http)
+        assertTrue(d("https://userstyles.world/api/style/1.user.css") is Decision.OfferUserstyle)
+        assertTrue(d("https://clients2.google.com/service/update2/foo.crx") is Decision.OfferWebExt)
+        assertTrue(d("https://evil.example/fake.xpi") is Decision.OfferWebExt)
     }
 
     @Test fun idnHostsReachHomographCheck() {

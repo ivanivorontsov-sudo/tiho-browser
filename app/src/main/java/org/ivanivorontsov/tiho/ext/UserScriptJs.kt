@@ -69,8 +69,33 @@ ${s.code}
 """.trim()
     }
 
+    fun styleWrapper(s: UserStyle, guardJs: String, trusted: Boolean): String {
+        val inc = JSONArray(s.includeRegexes).toString()
+        val exc = JSONArray(s.excludeRegexes).toString()
+        return """
+$PRELUDE
+(function(){"use strict";
+$guardJs
+if(!${trusted}&&__tihoPay)return;
+const __u=location.href;const __inc=$inc,__exc=$exc;
+if((__inc.length&&!__inc.some(r=>new RegExp(r).test(__u)))||__exc.some(r=>new RegExp(r).test(__u)))return;
+try{
+const e=document.createElement("style");
+e.setAttribute("data-tiho-style",${JSONObject.quote(s.id)});
+e.textContent=${JSONObject.quote(s.css)};
+(document.documentElement||document.head).appendChild(e);
+}catch(ex){console.error("[Тихо style]",ex);}
+})();
+""".trim()
+    }
+
+    private fun styleMatches(s: UserStyle): List<String> {
+        val m = s.matches.map { if (it == "<all_urls>") "*://*/*" else it }
+        return if (m.isNotEmpty() && m.all { MATCH_RE.matches(it) } && s.includes.isEmpty() && s.extraRegexes.isEmpty()) m else listOf("*://*/*")
+    }
+
     /** Config message for the built-in extension's native port. */
-    fun config(scripts: List<UserScript>, values: (String) -> Map<String, String>, paymentDomains: Collection<String>, guardJs: String, payDetect: Boolean): JSONObject {
+    fun config(scripts: List<UserScript>, values: (String) -> Map<String, String>, paymentDomains: Collection<String>, guardJs: String, payDetect: Boolean, styles: List<UserStyle> = emptyList()): JSONObject {
         val arr = JSONArray()
         for (s in scripts) {
             if (!s.enabled || s.tampered || !UserScriptPin.intact(s)) continue
@@ -78,6 +103,14 @@ ${s.code}
             arr.put(JSONObject().put("id", s.id).put("code", wrapper(s, guardJs, trusted))
                 .put("matches", JSONArray(nativeMatches(s) ?: listOf("*://*/*"))).put("runAt", runAt(s.runAt))
                 .put("allFrames", !s.noframes).put("trusted", trusted).put("values", JSONObject(values(s.id) as Map<*, *>)))
+        }
+        for (s in styles) {
+            if (!s.enabled || s.tampered) continue
+            if (s.sha256.isNotEmpty() && s.sha256 != UserScriptPin.sha256(s.code)) continue
+            val trusted = s.runsOnPayment
+            arr.put(JSONObject().put("id", s.id).put("code", styleWrapper(s, guardJs, trusted))
+                .put("matches", JSONArray(styleMatches(s))).put("runAt", "document_start")
+                .put("allFrames", true).put("trusted", trusted).put("values", JSONObject()))
         }
         return JSONObject().put("type", "config").put("scripts", arr)
             .put("paymentExclude", JSONArray(paymentExcludes(paymentDomains))).put("payDetect", payDetect)

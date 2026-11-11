@@ -7,6 +7,16 @@
 
 Настольные сборки: GitHub Actions → **Desktop Firefox ESR** → Artifacts.
 
+## 2.4.0: ТихоЩит внутри браузера и другие магазины расширений
+
+* В браузер встроены доменные списки отдельного приложения **ТихоЩит** (Google Ads/AdMob/IMA, мобильные SDK Unity/AppLovin/ironSource и др., AdGuard Mobile Ads, HaGeZi Pro mini, опционально аналитика). Запросы к этим хостам перехватывает встроенное WebExtension через Gecko `webRequest` — аналог `shouldInterceptRequest`, без VPN и без прокси.
+* В настройках: тумблер ТихоЩит, включение отдельных списков и счётчик блокировок.
+* Косметическое скрытие рекламных блоков на странице по-прежнему делает встроенный **uBlock Origin**.
+* Кроме полных дополнений с addons.mozilla.org можно ставить:
+  * пользовательские скрипты `.user.js` (Greasy Fork, OpenUserJS — как раньше);
+  * стили `.user.css` (Stylus / userstyles.world);
+  * пакеты Chrome/Edge/Opera (`.crx`) и посторонние `.xpi`: устанавливаются только `content_scripts` и CSS. Фоновые скрипты, popup, DNR и замена служебных страниц в GeckoView без подписи Mozilla не работают; для полного расширения нужен подписанный XPI с AMO.
+
 ---
 
 

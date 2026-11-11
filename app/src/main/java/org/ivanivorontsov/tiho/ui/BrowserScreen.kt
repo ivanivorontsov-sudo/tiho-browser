@@ -58,6 +58,9 @@ fun BrowserApp(b: Browser) {
                 Screen.ADDONS -> AddonsScreen(b)
                 Screen.AMO -> AmoScreen(b)
                 Screen.USERSCRIPTS -> UserscriptsScreen(b)
+                Screen.USERSTYLES -> UserstylesScreen(b)
+                Screen.STORES -> StoresScreen(b)
+                Screen.SHIELD -> ShieldScreen(b)
                 Screen.BOOKMARKS -> BookmarksScreen(b)
                 Screen.DOWNLOADS -> DownloadsScreen(b)
                 Screen.HISTORY -> HistoryScreen(b)
@@ -278,6 +281,8 @@ private fun MainMenu(b: Browser, tab: Tab, open: Boolean, close: () -> Unit) {
         }
         DropdownMenuItem({ Text("Дополнения") }, { close(); b.screen.value = Screen.ADDONS }, leadingIcon = { Icon(Icons.Outlined.Extension, null) })
         DropdownMenuItem({ Text("Пользовательские скрипты") }, { close(); b.screen.value = Screen.USERSCRIPTS }, leadingIcon = { Icon(Icons.Outlined.Code, null) })
+        DropdownMenuItem({ Text("Стили") }, { close(); b.screen.value = Screen.USERSTYLES }, leadingIcon = { Icon(Icons.Outlined.Palette, null) })
+        DropdownMenuItem({ Text("ТихоЩит") }, { close(); b.screen.value = Screen.SHIELD }, leadingIcon = { Icon(Icons.Outlined.Shield, null) })
         DropdownMenuItem({ Text("Закладки") }, { close(); b.screen.value = Screen.BOOKMARKS }, leadingIcon = { Icon(Icons.Outlined.Bookmarks, null) })
         DropdownMenuItem({ Text("История") }, { close(); b.screen.value = Screen.HISTORY }, leadingIcon = { Icon(Icons.Outlined.History, null) })
         DropdownMenuItem({ Text("Загрузки") }, { close(); b.screen.value = Screen.DOWNLOADS }, leadingIcon = { Icon(Icons.Outlined.Download, null) })

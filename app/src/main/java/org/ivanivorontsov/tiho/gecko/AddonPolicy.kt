@@ -16,6 +16,7 @@ object AddonPolicy {
 
     const val UBO_ID = "uBlock0@raymondhill.net"
     const val TIHO_EXT_ID = "tiho@ivanivorontsov.org"
+    const val SHIELD_EXT_ID = "tihoshield@ivanivorontsov.org"
 
     fun parsePins(json: String): MutableMap<String, Pin> {
         val out = LinkedHashMap<String, Pin>()

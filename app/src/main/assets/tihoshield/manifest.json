@@ -1,0 +1,9 @@
+{
+  "manifest_version": 2,
+  "name": "ТихоЩит",
+  "description": "Встроенная блокировка рекламных и трекерных доменов (списки ТихоЩит) без VPN и прокси.",
+  "version": "1.0.0",
+  "browser_specific_settings": { "gecko": { "id": "tihoshield@ivanivorontsov.org" } },
+  "permissions": ["nativeMessaging", "geckoViewAddons", "webRequest", "webRequestBlocking", "<all_urls>"],
+  "background": { "scripts": ["background.js"] }
+}

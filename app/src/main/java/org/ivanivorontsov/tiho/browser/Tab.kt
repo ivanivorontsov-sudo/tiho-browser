@@ -212,6 +212,8 @@ class Tab(val browser: Browser, val incognito: Boolean, initialDesktop: Boolean,
             is NavPolicy.Decision.External -> { browser.onExternalScheme(this, d.url, req.hasUserGesture); GeckoResult.deny() }
             is NavPolicy.Decision.InstallXpi -> { app.addons.installFromAmo(d.slugOrUrl); GeckoResult.deny() }
             is NavPolicy.Decision.OfferUserscript -> { browser.offerUserscript(d.url); GeckoResult.deny() }
+            is NavPolicy.Decision.OfferUserstyle -> { browser.offerUserstyle(d.url); GeckoResult.deny() }
+            is NavPolicy.Decision.OfferWebExt -> { browser.offerWebExt(d.url); GeckoResult.deny() }
             is NavPolicy.Decision.Phishing -> { warning.value = Warning.Phishing(d.url, d.host, d.rule); GeckoResult.deny() }
             is NavPolicy.Decision.Unwrap -> { browser.main.post { guard("unwrap") { load(d.url) } }; GeckoResult.deny() }
             is NavPolicy.Decision.Http -> learnThenAllow(d.host)

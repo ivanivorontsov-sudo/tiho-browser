@@ -7,6 +7,7 @@ import org.ivanivorontsov.tiho.data.Bookmarks
 import org.ivanivorontsov.tiho.data.Downloads
 import org.ivanivorontsov.tiho.ext.Extensions
 import org.ivanivorontsov.tiho.gecko.Addons
+import org.ivanivorontsov.tiho.shield.Shield
 import org.ivanivorontsov.tiho.gecko.Engine
 import org.ivanivorontsov.tiho.security.Payments
 import org.ivanivorontsov.tiho.security.Threats
@@ -31,6 +32,7 @@ class TihoApp : Application() {
     lateinit var history: org.ivanivorontsov.tiho.data.History
     lateinit var engine: Engine
     lateinit var addons: Addons
+    lateinit var shield: Shield
     var browser: Browser? = null
 
     override fun onCreate() {
@@ -54,6 +56,7 @@ class TihoApp : Application() {
         history = org.ivanivorontsov.tiho.data.History(filesDir).also { it.prune(prefs.historyDays) }
         engine = Engine(this)
         addons = Addons(this)
+        shield = Shield(this)
         engine.runtimeAddons = { addons }
         engine.start()
         // Private mode: the previous session was not closed via «Выход» (process killed) → wipe now.

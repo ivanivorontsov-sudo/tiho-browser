@@ -20,7 +20,9 @@ import org.ivanivorontsov.tiho.BuildConfig
 import org.ivanivorontsov.tiho.Prefs
 import org.ivanivorontsov.tiho.browser.Browser
 import org.ivanivorontsov.tiho.browser.Browser.Screen
+import org.ivanivorontsov.tiho.ext.StoreCatalog
 import org.ivanivorontsov.tiho.ext.UserScriptPin
+import org.ivanivorontsov.tiho.shield.ShieldLists
 import org.ivanivorontsov.tiho.gecko.AddonPolicy
 import org.ivanivorontsov.tiho.gecko.Addons
 import org.ivanivorontsov.tiho.security.Homograph
@@ -79,6 +81,12 @@ fun SettingsScreen(b: Browser) {
         item { NavRow("История", "${b.app.history.items.size} записей", Icons.Outlined.History) { b.backTo(Screen.HISTORY) } }
         item { NavRow("Удалить данные сайтов сейчас", icon = Icons.Outlined.LocalFireDepartment) { b.clearNow() } }
 
+        item { SectionHeader("ТихоЩит") }
+        item { SwitchRow("Блокировать рекламу и трекеры в браузере",
+            "Списки ТихоЩит (AdMob, Unity Ads, AppLovin, ironSource и др.) перехватывают запросы внутри Gecko. VPN и прокси не используются. Косметическое скрытие блоков на странице делает встроенный uBlock Origin.",
+            b.prefs.shieldEnabled) { b.app.shield.setEnabled(it) } }
+        item { NavRow("Списки и статистика ТихоЩит", "${b.app.shield.blocked.value} запросов за сеанс", Icons.Outlined.Shield) { b.backTo(Screen.SHIELD) } }
+
         item { SectionHeader("Разделы") }
         item { NavRow("Безопасность и режим оплаты", icon = Icons.Outlined.VerifiedUser) { b.backTo(Screen.SECURITY) } }
         item { NavRow("Дополнения", icon = Icons.Outlined.Extension) { b.backTo(Screen.ADDONS) } }
@@ -128,9 +136,18 @@ fun AddonsScreen(b: Browser) {
     var expanded by remember { mutableStateOf<String?>(null) }
     SubScreen("Дополнения", { b.backTo() }) {
         item {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { b.backTo(Screen.AMO) }) { Text("Каталог AMO") }
-                OutlinedButton(onClick = { b.backTo(); b.open("https://addons.mozilla.org/ru/android/", null) }) { Text("Сайт addons.mozilla.org") }
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Полные WebExtensions (с фоном и кнопками) — из каталога Mozilla. Скрипты, стили и content_scripts из Chrome/Edge/Opera ставятся отдельно.",
+                    style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { b.backTo(Screen.AMO) }) { Text("Каталог AMO") }
+                    OutlinedButton(onClick = { b.backTo(); b.open("https://addons.mozilla.org/ru/android/", null) }) { Text("Сайт AMO") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { b.backTo(Screen.USERSCRIPTS) }) { Text("Скрипты") }
+                    OutlinedButton(onClick = { b.backTo(Screen.USERSTYLES) }) { Text("Стили") }
+                    OutlinedButton(onClick = { b.backTo(Screen.STORES) }) { Text("Другие магазины") }
+                }
             }
         }
         if (a.rows.isEmpty()) item { Text("Нет установленных дополнений", Modifier.padding(16.dp)) }
@@ -268,6 +285,141 @@ fun UserscriptsScreen(b: Browser) {
 }
 
 @Composable
+fun UserstylesScreen(b: Browser) {
+    val ext = b.app.extensions
+    var url by remember { mutableStateOf("") }
+    SubScreen("Стили", { b.backTo(Screen.ADDONS) }) {
+        item {
+            Text("Файлы .user.css (Stylus, userstyles.world). CSS вставляется встроенным модулем Тихо на подходящих страницах. Только HTTPS, SHA-256 закрепляется при установке.",
+                Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+        }
+        item {
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(url, { url = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("https://…/style.user.css") })
+                TextButton(onClick = { if (url.isNotBlank()) b.offerUserstyle(url.trim()) }) { Text("Установить") }
+            }
+        }
+        items(ext.styles.toList(), key = { it.id }) { s ->
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(s.name + " " + s.version, fontWeight = FontWeight.Bold)
+                        Text(s.description, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        Text("SHA-256 " + UserScriptPin.pretty(s.sha256).take(39) + "…", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
+                        if (s.tampered) Text("Код изменён вне Тихо — стиль отключён", color = MaterialTheme.colorScheme.error)
+                    }
+                    Switch(s.enabled, { ext.setStyleEnabled(s.id, it) }, enabled = !s.tampered)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(s.runsOnPayment, { ext.setStyleTrustedPayment(s.id, it) }); Text("Доверять на страницах оплаты", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { ext.deleteStyle(s.id) }) { Text("Удалить", color = MaterialTheme.colorScheme.error) }
+                }
+                HorizontalDivider()
+            }
+        }
+        if (ext.styles.isEmpty()) item { Text("Установленных стилей нет", Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+@Composable
+fun StoresScreen(b: Browser) {
+    var q by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var scripts by remember { mutableStateOf<List<StoreCatalog.ScriptHit>>(emptyList()) }
+    var styles by remember { mutableStateOf<List<StoreCatalog.StyleHit>>(emptyList()) }
+    var packageUrl by remember { mutableStateOf("") }
+    fun search() {
+        val query = q.trim()
+        if (query.isEmpty()) return
+        StoreCatalog.chromeIdFromUrl(query)?.let { b.offerChromeStore(it); return }
+        if (StoreCatalog.isUserCssUrl(query)) { b.offerUserstyle(query); return }
+        if (query.substringBefore('?').endsWith(".user.js", true)) { b.offerUserscript(query); return }
+        if (StoreCatalog.isCrxOrXpiUrl(query)) { b.offerWebExt(query); return }
+        loading = true; error = null
+        b.ioSearch(query) { s, st, e -> loading = false; scripts = s; styles = st; error = e }
+    }
+    SubScreen("Другие магазины", { b.backTo(Screen.ADDONS) }) {
+        item {
+            Text("Поиск пользовательских скриптов на Greasy Fork и стилей на userstyles.world. Расширения Chrome / Edge / Opera: вставьте ссылку из магазина или 32-буквенный id — будут установлены только content_scripts и CSS (фон, popup и DNR недоступны в GeckoView без подписи Mozilla). Полные дополнения Firefox — в каталоге AMO.",
+                Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+        }
+        item {
+            Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(q, { q = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Поиск или ссылка / id") },
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { search() }),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search))
+                IconButton(onClick = { search() }) { Icon(Icons.Outlined.Search, "Искать") }
+            }
+        }
+        item {
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { b.backTo(); b.open("https://greasyfork.org/ru", null) }) { Text("Greasy Fork") }
+                OutlinedButton(onClick = { b.backTo(); b.open("https://openuserjs.org/", null) }) { Text("OpenUserJS") }
+                OutlinedButton(onClick = { b.backTo(); b.open("https://userstyles.world/", null) }) { Text("userstyles.world") }
+            }
+        }
+        item {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(packageUrl, { packageUrl = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text("Ссылка Chrome / Edge / .crx / .xpi") })
+                TextButton(onClick = {
+                    val v = packageUrl.trim(); if (v.isEmpty()) return@TextButton
+                    StoreCatalog.chromeIdFromUrl(v)?.let { b.offerChromeStore(it) } ?: b.offerWebExt(v)
+                }) { Text("Установить") }
+            }
+        }
+        if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth().padding(16.dp)) }
+        error?.let { e -> item { Text("Ошибка: $e", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) } }
+        if (scripts.isNotEmpty()) item { SectionHeader("Greasy Fork") }
+        items(scripts, key = { it.codeUrl }) { r ->
+            ListItem(headlineContent = { Text(r.name) },
+                supportingContent = { Text((if (r.users > 0) "${r.users} установок · " else "") + r.description, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) },
+                trailingContent = { Button(onClick = { b.offerUserscript(r.codeUrl) }) { Text("Поставить") } })
+            HorizontalDivider()
+        }
+        if (styles.isNotEmpty()) item { SectionHeader("userstyles.world") }
+        items(styles, key = { it.id }) { r ->
+            ListItem(headlineContent = { Text(r.name) },
+                supportingContent = { Text(r.description, maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall) },
+                trailingContent = { Button(onClick = { b.offerUserstyle(r.codeUrl) }) { Text("Поставить") } })
+            HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+fun ShieldScreen(b: Browser) {
+    val sh = b.app.shield
+    val on = sh.listEnabled()
+    SubScreen("ТихоЩит", { b.backTo(Screen.SETTINGS) }) {
+        item {
+            Text("Те же доменные списки, что в отдельном приложении ТихоЩит, работают здесь внутри браузера: Gecko перехватывает запросы (webRequest) и не загружает рекламу AdMob, Unity Ads, AppLovin, ironSource и других сетей. VPN-служба и прокси не создаются — фильтрация только для страниц Тихо. Косметическое скрытие остаточных блоков на странице выполняет встроенный uBlock Origin.",
+                Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall)
+        }
+        item { SwitchRow("Включить ТихоЩит", null, b.prefs.shieldEnabled) { sh.setEnabled(it) } }
+        item {
+            ListItem(headlineContent = { Text("Заблокировано запросов") },
+                supportingContent = { Text("${sh.blocked.value} за этот запуск · всего правил: ${sh.merged.value}" + (sh.error.value?.let { "\nОшибка: $it" } ?: "")) },
+                trailingContent = { TextButton(onClick = { sh.resetStats() }) { Text("Сбросить") } })
+        }
+        item { SectionHeader("Списки") }
+        items(ShieldLists.ALL) { meta ->
+            SwitchRow(meta.title, meta.description + (sh.sizes[meta.id]?.let { " · $it доменов" } ?: ""), on[meta.id] == true) {
+                sh.setList(meta.id, it)
+            }
+        }
+        if (sh.last.isNotEmpty()) {
+            item { SectionHeader("Последние блокировки") }
+            items(sh.last.toList()) { h ->
+                ListItem(headlineContent = { Text(h.host) },
+                    supportingContent = { Text("${h.list} · правило ${h.rule}", style = MaterialTheme.typography.bodySmall) })
+            }
+        }
+    }
+}
+
+@Composable
 fun BookmarksScreen(b: Browser) {
     SubScreen("Закладки", { b.backTo() }) {
         if (b.app.bookmarks.items.isEmpty()) item { Text("Закладок нет. Добавить: меню → ☆", Modifier.padding(16.dp)) }
@@ -380,6 +532,7 @@ private val THIRD_PARTY = listOf(
     ThirdParty("Phishing URL Blocklist (встроенный список)", "2026-10-01", "malware-filter (curben); источники OpenPhish, IPThreat, PhishTank", "CC BY-SA 4.0; код — MIT", "https://gitlab.com/malware-filter/phishing-filter", "CC-BY-SA-4.0.txt"),
     ThirdParty("Online Malicious URL Blocklist (встроенный список)", "2026-10-01", "malware-filter (curben); данные URLhaus (abuse.ch)", "CC0 1.0 и MIT", "https://gitlab.com/malware-filter/urlhaus-filter", "CC0-1.0.txt"),
     ThirdParty("Списки фильтров из пакетов обновлений", "по пакету", "EasyList, RU AdList, uAssets, AdGuard, HaGeZi, Peter Lowe и др.", "GPLv3 / CC BY-SA 3.0 / CC BY 3.0 / MIT и др. (по таблице)", "https://github.com/ivanivorontsov-sudo/tiho-updates", "THIRD_PARTY_NOTICES-filters.md"),
+    ThirdParty("Списки ТихоЩит (встроенные)", "1.0.0", "Google Ads/SDK-списки ТихоЩит; AdGuard Mobile Ads; HaGeZi Multi PRO mini", "свои списки + CC BY-SA 3.0 (AdGuard) + лицензии HaGeZi", "https://github.com/ivanivorontsov-sudo/tiho-shield", "THIRD_PARTY_NOTICES-filters.md"),
 )
 
 private val LICENSE_FILES = listOf(

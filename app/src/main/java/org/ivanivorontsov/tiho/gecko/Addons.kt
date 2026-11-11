@@ -104,6 +104,9 @@ class Addons(private val app: TihoApp) {
             }, "tiho")
             app.browser?.attachTihoExt(ext)
         }, { e -> Log.e("Tiho", "built-in extension failed", e) })
+        ctl.ensureBuiltIn("resource://android/assets/tihoshield/", AddonPolicy.SHIELD_EXT_ID).accept({ ext ->
+            if (ext != null) app.shield.attach(ext)
+        }, { e -> Log.e("Tiho", "built-in ТихоЩит failed", e) })
         // Undo pauses left over from a previous process (no «Банк» tab exists at start).
         resumePaused()
         if (!prefs.uboInstalled) installBundledUbo() else refresh()
@@ -159,7 +162,7 @@ class Addons(private val app: TihoApp) {
         ctl.list().accept({ list ->
             val pins = AddonPolicy.parsePins(prefs.addonPins)
             val trust = AddonPolicy.parseTrust(prefs.addonPaymentTrust)
-            val exts = list.orEmpty().filter { !it.isBuiltIn && it.id != AddonPolicy.TIHO_EXT_ID }
+            val exts = list.orEmpty().filter { !it.isBuiltIn && it.id != AddonPolicy.TIHO_EXT_ID && it.id != AddonPolicy.SHIELD_EXT_ID }
             installed = exts.associate { it.id to (it.metaData.version ?: "") }
             val valid = AddonPolicy.validTrusted(trust, pins, installed)
             rows.clear()
@@ -359,7 +362,7 @@ class Addons(private val app: TihoApp) {
         appliedScripts = -1
         try {
             val cfg = UserScriptJs.config(app.extensions.scripts.toList(), { app.extensions.gmAll(it) }, app.engine.paymentBaseDomains(),
-                app.payments.guardJs(), payDetect = true)
+                app.payments.guardJs(), payDetect = true, styles = app.extensions.styles.toList())
             org.ivanivorontsov.tiho.dist.Dist.extraScript(app)?.let { cfg.getJSONArray("scripts").put(it) }
             port.postMessage(cfg)
         } catch (e: Exception) { Log.e("Tiho", "push config", e) }

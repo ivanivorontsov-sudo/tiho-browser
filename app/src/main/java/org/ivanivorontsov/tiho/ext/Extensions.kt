@@ -12,16 +12,21 @@ data class CatalogEntry(val name: String, val description: String, val url: Stri
 
 
 /**
- * Extension system: built-in extensions + user scripts (Greasemonkey/Tampermonkey compatible subset).
- * Chrome Web Store (.crx / WebExtensions) is NOT supported: Android System WebView has no extension runtime.
+ * Extension system: user scripts (Greasemonkey/Tampermonkey subset), userstyles (Stylus / .user.css),
+ * and content_scripts extracted from Chrome/Firefox packages (CRX/XPI). Full AMO WebExtensions
+ * are installed separately via Gecko (see Addons).
  */
 class Extensions(private val ctx: Context, private val prefs: Prefs) {
     val scripts = mutableStateListOf<UserScript>()
+    val styles = mutableStateListOf<UserStyle>()
     private val file = File(ctx.filesDir, "userscripts.json")
+    private val styleFile = File(ctx.filesDir, "userstyles.json")
     var onChanged: (() -> Unit)? = null
 
     fun load() {
         scripts.clear()
+        styles.clear()
+        loadStyles()
         if (!file.exists()) {
             // First run: install the example userscript (disabled).
             val src = ctx.assets.open("userscripts/allow-copy.user.js").bufferedReader().use { it.readText() }
@@ -85,6 +90,78 @@ class Extensions(private val ctx: Context, private val prefs: Prefs) {
         scripts.removeAll { it.id == id }
         ctx.getSharedPreferences("gm_$id", Context.MODE_PRIVATE).edit().clear().apply()
         save(); onChanged?.invoke()
+    }
+
+    private fun loadStyles() {
+        if (!styleFile.exists()) return
+        try {
+            val arr = JSONArray(styleFile.readText())
+            var migrated = false
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                var s = UserStyle.parse(o.getString("code"), o.optString("url").ifBlank { null }, o.optBoolean("enabled", true))
+                s = s.copy(
+                    sha256 = o.optString("sha256", ""),
+                    trustedPayment = o.optBoolean("trusted_payment", false),
+                    trustedHash = o.optString("trusted_hash", ""),
+                )
+                if (s.sha256.isEmpty()) { s = s.copy(sha256 = UserScriptPin.sha256(s.code)); migrated = true }
+                if (s.sha256.isNotEmpty() && s.sha256 != UserScriptPin.sha256(s.code)) s = s.copy(tampered = true, enabled = false)
+                styles += s
+            }
+            if (migrated) saveStyles()
+        } catch (_: Exception) {}
+    }
+
+    private fun saveStyles() {
+        val arr = JSONArray()
+        styles.forEach { s ->
+            arr.put(JSONObject().put("code", s.code).put("url", s.sourceUrl ?: "").put("enabled", s.enabled)
+                .put("sha256", s.sha256).put("trusted_payment", s.trustedPayment).put("trusted_hash", s.trustedHash))
+        }
+        styleFile.writeText(arr.toString())
+    }
+
+    fun findStyle(id: String): UserStyle? = styles.firstOrNull { it.id == id }
+
+    fun installStyle(s: UserStyle) {
+        val pinned = if (s.sha256.isEmpty()) s.copy(sha256 = UserScriptPin.sha256(s.code)) else s
+        val i = styles.indexOfFirst { it.id == pinned.id }
+        val old = if (i >= 0) styles[i] else null
+        val keepTrust = old != null && old.trustedPayment && old.bundleHash == pinned.bundleHash
+        val n = pinned.copy(trustedPayment = keepTrust, trustedHash = if (keepTrust) old!!.trustedHash else "", tampered = false)
+        if (i >= 0) styles[i] = n else styles += n
+        saveStyles(); onChanged?.invoke()
+    }
+
+    fun setStyleEnabled(id: String, on: Boolean) {
+        val i = styles.indexOfFirst { it.id == id }
+        if (i >= 0) { styles[i] = styles[i].copy(enabled = on); saveStyles(); onChanged?.invoke() }
+    }
+
+    fun setStyleTrustedPayment(id: String, on: Boolean) {
+        val i = styles.indexOfFirst { it.id == id }
+        if (i >= 0) { val s = styles[i]; styles[i] = s.copy(trustedPayment = on, trustedHash = if (on) s.bundleHash else ""); saveStyles(); onChanged?.invoke() }
+    }
+
+    fun deleteStyle(id: String) {
+        styles.removeAll { it.id == id }
+        saveStyles(); onChanged?.invoke()
+    }
+
+    fun downloadStyle(url: String, expectedSha256: String? = null): UserStyle {
+        UserScriptPin.requireHttps(url)
+        val text = Net.getText(url, 4L * 1024 * 1024)
+        if (expectedSha256 != null && UserScriptPin.sha256(text) != expectedSha256.lowercase())
+            throw SecurityException("SHA-256 стиля не совпадает")
+        val parsed = UserStyle.parse(text, url)
+        return parsed.copy(sha256 = UserScriptPin.sha256(parsed.code))
+    }
+
+    fun downloadPackage(url: String, userAgent: String = "Mozilla/5.0"): Pair<WebExtPackage.Preview, ByteArray> {
+        UserScriptPin.requireHttps(url)
+        val bytes = Net.get(url, WebExtPackage.MAX_PACKAGE, userAgent)
+        return WebExtPackage.parse(bytes) to bytes
     }
 
     /**

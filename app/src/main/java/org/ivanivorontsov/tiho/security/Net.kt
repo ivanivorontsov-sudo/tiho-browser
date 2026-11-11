@@ -14,13 +14,13 @@ import java.security.MessageDigest
 object Net {
     class InsecureUrl(u: String) : IOException("Только HTTPS: $u")
 
-    private fun open(url: String): HttpURLConnection {
+    private fun open(url: String, userAgent: String = "Mozilla/5.0"): HttpURLConnection {
         if (!url.startsWith("https://", ignoreCase = true)) throw InsecureUrl(url)
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 15000; c.readTimeout = 30000
         c.instanceFollowRedirects = true // HttpURLConnection never follows https → http
         c.useCaches = false
-        c.setRequestProperty("User-Agent", "Mozilla/5.0")
+        c.setRequestProperty("User-Agent", userAgent)
         return c
     }
 
@@ -30,8 +30,8 @@ object Net {
         if (code != 200) throw IOException("HTTP $code: $url")
     }
 
-    fun get(url: String, maxBytes: Long = 32L * 1024 * 1024): ByteArray {
-        val c = open(url)
+    fun get(url: String, maxBytes: Long = 32L * 1024 * 1024, userAgent: String = "Mozilla/5.0"): ByteArray {
+        val c = open(url, userAgent)
         try {
             check(c, url)
             val out = ByteArrayOutputStream()

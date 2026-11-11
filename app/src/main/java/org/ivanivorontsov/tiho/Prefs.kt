@@ -16,7 +16,7 @@ class Prefs(context: Context) {
     private val listeners = mutableListOf<() -> Unit>()
     fun onChange(l: () -> Unit) { listeners += l }
     /** Keys that are statistics, not settings: no reconfiguration on change. */
-    private val silent = setOf("total_blocked", "content_status", "content_last_check", "payment_known", "app_update_status",
+    private val silent = setOf("total_blocked", "content_status", "content_last_check", "payment_known", "app_update_status", "shield_blocked",
         "app_last_check", "addon_pins", "addons_paused", "ubo_installed", "update_banner_dismissed", "app_last_ok")
     fun changed(key: String) { if (key !in silent) listeners.forEach { it() } }
 
@@ -99,6 +99,10 @@ class Prefs(context: Context) {
     /** Add-ons the app paused (EnableSource.APP) while a «Банк» tab was open. */
     var addonsPaused by SS("addons_paused", emptySet())
     var uboInstalled by B("ubo_installed", false)
+
+    var shieldEnabled by B("shield_enabled", true)
+    var shieldLists by S("shield_lists", "")
+    var shieldBlocked by I("shield_blocked", 0)
 
     // --- Updates (signed content packs + APK)
     var contentAuto by B("content_auto", true)
