@@ -29,6 +29,26 @@ jobs:
         run: |
           python3 -m json.tool desktop/distribution/policies-linux.json >/dev/null
           python3 -m json.tool desktop/distribution/policies.json >/dev/null
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          required_origins = {"https://accounts.google.com", "https://www.google.com"}
+          required_exemptions = {"accounts.google.com", "www.google.com"}
+          for filename in ("desktop/distribution/policies.json", "desktop/distribution/policies-linux.json"):
+              policy = json.loads(Path(filename).read_text())["policies"]
+              cookies = policy["Cookies"]
+              assert cookies["Behavior"] == "partition-foreign", filename
+              assert cookies["BehaviorPrivateBrowsing"] == "partition-foreign", filename
+              assert cookies["Locked"] is True, filename
+              assert required_origins.issubset(set(cookies["Allow"])), filename
+              preferences = policy["Preferences"]
+              assert "network.cookie.cookieBehavior" not in preferences, filename
+              assert preferences["privacy.resistFingerprinting"]["Value"] is True, filename
+              exemptions = set(preferences["privacy.resistFingerprinting.exemptedDomains"]["Value"].split(","))
+              assert required_exemptions.issubset(exemptions), filename
+          print("Google sign-in privacy exceptions validated for Windows and Linux policies")
+          PY
           node --check desktop/ui/core.js
           node --check desktop/ui/app.js
       - name: Run start-page unit tests
