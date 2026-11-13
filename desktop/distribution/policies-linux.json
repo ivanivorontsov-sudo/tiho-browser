@@ -35,10 +35,6 @@
         "Value": true,
         "Status": "locked"
       },
-      "network.cookie.cookieBehavior": {
-        "Value": 5,
-        "Status": "locked"
-      },
       "dom.security.https_only_mode": {
         "Value": true,
         "Status": "locked"
@@ -186,12 +182,25 @@
       "privacy.sanitize.sanitizeOnShutdown": {
         "Value": true,
         "Status": "locked"
+      },
+      "privacy.resistFingerprinting.exemptedDomains": {
+        "Value": "accounts.google.com,www.google.com",
+        "Status": "locked"
       }
     },
     "Homepage": {
       "URL": "file:///opt/tiho/ui/index.html",
       "StartPage": "homepage",
       "Locked": false
+    },
+    "Cookies": {
+      "Allow": [
+        "https://accounts.google.com",
+        "https://www.google.com"
+      ],
+      "Behavior": "partition-foreign",
+      "BehaviorPrivateBrowsing": "partition-foreign",
+      "Locked": true
     }
   }
 }
