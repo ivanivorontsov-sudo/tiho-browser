@@ -12,6 +12,7 @@
 - Вкладки, закладки, история, загрузки, поиск по странице и WebExtensions предоставляет Firefox ESR.
 - uBlock Origin устанавливается из официального каталога Mozilla Add-ons.
 - Политики приватности Firefox включают Enhanced Tracking Protection, HTTPS-Only, Global Privacy Control, защиту от фингерпринтинга и ограничение WebRTC.
+- Для совместимости входа Google разрешены cookies только для `accounts.google.com` и `www.google.com`; там же действует точечное исключение из Resist Fingerprinting. Total Cookie Protection и остальные защиты сохраняются для всех остальных сайтов.
 
 ## Установка Linux
 
